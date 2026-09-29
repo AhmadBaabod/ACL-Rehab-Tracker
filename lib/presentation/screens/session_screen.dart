@@ -14,6 +14,7 @@ import 'package:acl_rehab/domain/models/session_log.dart';
 import 'package:acl_rehab/domain/models/workout_log.dart';
 import 'package:acl_rehab/domain/services/plan_generator.dart';
 import 'package:acl_rehab/domain/services/reassessment_advisor.dart';
+import 'package:acl_rehab/domain/services/set_logging.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/common.dart';
 import 'package:acl_rehab/presentation/widgets/exercise_sheets.dart';
@@ -49,6 +50,23 @@ extension on _PainBand {
   };
 }
 
+/// Editable values for one set during a workout.
+class _SetDraft {
+  _SetDraft({required String value, required String weight})
+    : value = TextEditingController(text: value),
+      weight = TextEditingController(text: weight);
+
+  /// Reps, seconds, or minutes, depending on the exercise.
+  final TextEditingController value;
+  final TextEditingController weight;
+  bool done = false;
+
+  void dispose() {
+    value.dispose();
+    weight.dispose();
+  }
+}
+
 class _SessionScreenState extends ConsumerState<SessionScreen> {
   String? _sessionId;
   String? _planId;
@@ -56,7 +74,10 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
   DateTime? _startedAt;
   int _index = 0;
   bool _saving = false;
-  final Map<String, int> _setsDone = {};
+
+  /// Doses are fixed for the whole workout so feedback changes the next one.
+  final Map<String, Prescription> _doses = {};
+  final Map<String, List<_SetDraft>> _drafts = {};
   final Map<String, ExerciseFeedback> _feedback = {};
   final Map<String, _PainBand> _pain = {};
   final Map<String, String> _todaySwaps = {};
@@ -69,7 +90,28 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
   @override
   void dispose() {
     _restTimer?.cancel();
+    for (final draft in _drafts.values.expand((drafts) => drafts)) {
+      draft.dispose();
+    }
     super.dispose();
+  }
+
+  /// Drops the set drafts for one slot, or all of them. Their text fields are
+  /// still mounted until the next frame, so controllers are disposed after it.
+  void _clearDrafts([String? slotId]) {
+    final keys = slotId == null ? [..._drafts.keys] : [slotId];
+    final retired = <_SetDraft>[];
+    for (final key in keys) {
+      retired.addAll(_drafts.remove(key) ?? const <_SetDraft>[]);
+      _doses.remove(key);
+    }
+    if (slotId == null) _doses.clear();
+    if (retired.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final draft in retired) {
+        draft.dispose();
+      }
+    });
   }
 
   void _reset() {
@@ -78,7 +120,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     _startedAt = null;
     _index = 0;
     _sessionId = null;
-    _setsDone.clear();
+    _clearDrafts();
     _feedback.clear();
     _pain.clear();
     _todaySwaps.clear();
@@ -128,31 +170,19 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final items = session.exercises;
     final index = _index.clamp(0, items.length - 1);
     final slot = items[index];
-    final exercise =
-        ExerciseCatalog.byId(_todaySwaps[slot.exerciseId] ?? slot.exerciseId) ??
-        ExerciseCatalog.byId(slot.exerciseId)!;
-    final dose = _doseFor(appState, slot, exercise);
+    final exercise = _activeExercise(slot);
+    final dose = _dose(appState, slot);
+    final measure = setMeasureFor(exercise, dose);
+    final drafts = _draftsFor(appState, slot);
+    final lastSets = appState.lastSetsFor(exercise.id);
     final plannedSets = {
-      for (final item in items)
-        item.exerciseId: _doseFor(
-          appState,
-          item,
-          ExerciseCatalog.byId(
-                _todaySwaps[item.exerciseId] ?? item.exerciseId,
-              ) ??
-              ExerciseCatalog.byId(item.exerciseId)!,
-        ).sets,
+      for (final item in items) item.exerciseId: _dose(appState, item).sets,
+    };
+    final setsDone = {
+      for (final item in items) item.exerciseId: _doneCount(item.exerciseId),
     };
     final totalSets = plannedSets.values.fold<int>(0, (a, b) => a + b);
-    final doneSets = items.fold<int>(
-      0,
-      (sum, item) =>
-          sum +
-          (_setsDone[item.exerciseId] ?? 0).clamp(
-            0,
-            plannedSets[item.exerciseId]!,
-          ),
-    );
+    final doneSets = setsDone.values.fold<int>(0, (a, b) => a + b);
 
     return Scaffold(
       body: ResponsivePage(
@@ -185,7 +215,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
           _ProgressStrip(
             items: items,
             current: index,
-            setsDone: _setsDone,
+            setsDone: setsDone,
             plannedSets: plannedSets,
             doneSets: doneSets,
             totalSets: totalSets,
@@ -199,19 +229,27 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             slot: slot,
             dose: dose,
             swappedToday: _todaySwaps.containsKey(slot.exerciseId),
-            setsDone: _setsDone[slot.exerciseId] ?? 0,
+            measure: measure,
+            drafts: drafts,
+            unit: appState.weightUnit,
+            lastTime: summarizeSets(lastSets, appState.weightUnit),
+            suggestion: measure.tracksWeight
+                ? loadSuggestion(lastSets, dose, appState.weightUnit)
+                : null,
             feedback: _feedback[slot.exerciseId],
             pain: _pain[slot.exerciseId],
             message: _messages[slot.exerciseId],
             restRemaining: _restRemaining,
-            onToggleSet: (setNumber) => _toggleSet(slot, setNumber),
+            onCompleteSet: (setIndex) => _completeSet(appState, slot, setIndex),
             onStartRest: () => _startRest(dose.restSeconds),
             onPain: (band) => setState(() => _pain[slot.exerciseId] = band),
             onFeedback: (feedback) =>
                 _recordFeedback(slot, exercise, feedback, dose),
             onSwap: () => _swap(appState, slot, exercise),
-            onUndoSwap: () =>
-                setState(() => _todaySwaps.remove(slot.exerciseId)),
+            onUndoSwap: () => setState(() {
+              _todaySwaps.remove(slot.exerciseId);
+              _clearDrafts(slot.exerciseId);
+            }),
             onDetails: () => showExerciseDetailSheet(context, ref, item: slot),
           ),
           const SizedBox(height: 16),
@@ -270,8 +308,9 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               icon: Icons.history,
               title: 'No sessions logged yet',
               body:
-                  'Mark sets as you go and tap Finish workout. Your sessions build '
-                  'the progress charts and decide when your plan progresses.',
+                  'Log reps and weight for each set, then tap Finish workout. '
+                  'Your sessions build the progress charts and decide when '
+                  'your plan progresses.',
             )
           else
             Card(
@@ -286,7 +325,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                       ),
                       subtitle: Text(
                         '${log.completedSets}/${log.plannedSets} sets · pain '
-                        '${log.painAfter}/10 · effort ${log.effort}/10',
+                        '${log.painAfter}/10 · effort ${log.effort}/10'
+                        '${log.volumeKg > 0 ? ' · ${appState.weightUnit.format(log.volumeKg)} lifted' : ''}',
                       ),
                       trailing: Text(formatDate(log.completedAt)),
                     ),
@@ -344,15 +384,124 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     });
   }
 
-  void _toggleSet(PlanExercise slot, int setNumber) {
+  Exercise _activeExercise(PlanExercise slot) {
+    return ExerciseCatalog.byId(
+          _todaySwaps[slot.exerciseId] ?? slot.exerciseId,
+        ) ??
+        ExerciseCatalog.byId(slot.exerciseId)!;
+  }
+
+  Prescription _dose(AppState state, PlanExercise slot) {
+    return _doses.putIfAbsent(
+      slot.exerciseId,
+      () => _doseFor(state, slot, _activeExercise(slot)),
+    );
+  }
+
+  int _doneCount(String slotId) =>
+      _drafts[slotId]?.where((draft) => draft.done).length ?? 0;
+
+  /// Set rows, pre-filled from the last time this exercise was logged.
+  List<_SetDraft> _draftsFor(AppState state, PlanExercise slot) {
+    final existing = _drafts[slot.exerciseId];
+    if (existing != null) return existing;
+    final exercise = _activeExercise(slot);
+    final dose = _dose(state, slot);
+    final measure = setMeasureFor(exercise, dose);
+    final last = state.lastSetsFor(exercise.id);
+    final target = targetValue(measure, dose);
+    final unit = state.weightUnit;
+
+    SetLog? previous(int index) =>
+        last.isEmpty ? null : last[index.clamp(0, last.length - 1)];
+
+    String valueFor(int index) {
+      final set = previous(index);
+      final logged = switch (measure) {
+        SetMeasure.repsAndWeight || SetMeasure.reps => set?.reps,
+        SetMeasure.seconds => set?.seconds,
+        SetMeasure.minutes => set?.seconds == null ? null : set!.seconds! ~/ 60,
+      };
+      return '${logged ?? target ?? ''}';
+    }
+
+    String weightFor(int index) {
+      final kg = previous(index)?.weightKg ?? 0;
+      if (!measure.tracksWeight || kg <= 0) return '';
+      return unit.format(kg).split(' ').first;
+    }
+
+    return _drafts[slot.exerciseId] = [
+      for (var i = 0; i < dose.sets; i++)
+        _SetDraft(value: valueFor(i), weight: weightFor(i)),
+    ];
+  }
+
+  void _completeSet(AppState state, PlanExercise slot, int index) {
+    final drafts = _draftsFor(state, slot);
+    final draft = drafts[index];
+    if (draft.done) {
+      setState(() => draft.done = false);
+      return;
+    }
+    final dose = _dose(state, slot);
+    final measure = setMeasureFor(_activeExercise(slot), dose);
+    final value = int.tryParse(draft.value.text.trim());
+    final max = measure == SetMeasure.seconds ? 3600 : 300;
+    if (value == null || value <= 0 || value > max) {
+      _showMessage(
+        'Enter the ${measure.fieldLabel.toLowerCase()} for set ${index + 1}.',
+      );
+      return;
+    }
+    if (measure.tracksWeight && draft.weight.text.trim().isNotEmpty) {
+      final weight = double.tryParse(
+        draft.weight.text.trim().replaceAll(',', '.'),
+      );
+      if (weight == null || weight < 0 || weight > 1000) {
+        _showMessage('Enter a valid weight for set ${index + 1}.');
+        return;
+      }
+    }
     HapticFeedback.selectionClick();
+    FocusScope.of(context).unfocus();
     setState(() {
       _ensureStarted();
-      final done = _setsDone[slot.exerciseId] ?? 0;
-      _setsDone[slot.exerciseId] = done >= setNumber
-          ? setNumber - 1
-          : setNumber;
+      draft.done = true;
     });
+    if (index < drafts.length - 1) _startRest(dose.restSeconds);
+  }
+
+  /// Completed sets for [slot], converted for storage.
+  List<SetLog> _setLogs(AppState state, PlanExercise slot) {
+    final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
+    final measure = setMeasureFor(_activeExercise(slot), _dose(state, slot));
+    final unit = state.weightUnit;
+    SetLog toLog(_SetDraft draft) {
+      final value = int.tryParse(draft.value.text.trim()) ?? 0;
+      final weight = double.tryParse(
+        draft.weight.text.trim().replaceAll(',', '.'),
+      );
+      return switch (measure) {
+        SetMeasure.repsAndWeight => SetLog(
+          reps: value,
+          weightKg: weight == null || weight <= 0 ? null : unit.toKg(weight),
+        ),
+        SetMeasure.reps => SetLog(reps: value),
+        SetMeasure.seconds => SetLog(seconds: value),
+        SetMeasure.minutes => SetLog(seconds: value * 60),
+      };
+    }
+
+    return [
+      for (final draft in drafts.where((draft) => draft.done)) toLog(draft),
+    ];
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _startRest(int seconds) {
@@ -395,7 +544,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         feedback: feedback,
         painAfter: _pain[slot.exerciseId]?.score,
         workoutId: _workoutId,
-        setsCompleted: _setsDone[slot.exerciseId] ?? 0,
+        setsCompleted: _doneCount(slot.exerciseId),
         setsPlanned: dose.sets,
       );
       if (!mounted) return;
@@ -454,7 +603,10 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     );
     if (choice == null || !mounted) return;
     if (!choice.permanent) {
-      setState(() => _todaySwaps[slot.exerciseId] = choice.exercise.id);
+      setState(() {
+        _todaySwaps[slot.exerciseId] = choice.exercise.id;
+        _clearDrafts(slot.exerciseId);
+      });
       return;
     }
     try {
@@ -479,14 +631,25 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     PlanSession session,
     Map<String, int> plannedSets,
   ) async {
-    final done = _setsDone.values.fold<int>(0, (a, b) => a + b);
+    final setLogs = {
+      for (final item in session.exercises)
+        item.exerciseId: _setLogs(state, item),
+    };
+    final done = setLogs.values.fold<int>(0, (sum, sets) => sum + sets.length);
     final total = plannedSets.values.fold<int>(0, (a, b) => a + b);
+    final volumeKg = setLogs.values
+        .expand((sets) => sets)
+        .fold<double>(0, (sum, set) => sum + set.volumeKg);
     final result = await showModalBottomSheet<_FinishResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => _FinishSheet(setsDone: done, setsPlanned: total),
+      builder: (context) => _FinishSheet(
+        setsDone: done,
+        setsPlanned: total,
+        volume: volumeKg > 0 ? state.weightUnit.format(volumeKg) : null,
+      ),
     );
     if (result == null || !mounted) return;
 
@@ -509,12 +672,10 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               exerciseName: exercise?.name ?? item.exerciseId,
               plannedSets:
                   plannedSets[item.exerciseId] ?? item.prescription.sets,
-              completedSets: (_setsDone[item.exerciseId] ?? 0).clamp(
-                0,
-                plannedSets[item.exerciseId] ?? item.prescription.sets,
-              ),
+              completedSets: setLogs[item.exerciseId]!.length,
               feedback: _feedback[item.exerciseId],
               substitutedFromId: swapped == null ? null : item.exerciseId,
+              sets: setLogs[item.exerciseId]!,
             );
           }(),
       ],
@@ -621,9 +782,16 @@ class _FinishResult {
 }
 
 class _FinishSheet extends StatefulWidget {
-  const _FinishSheet({required this.setsDone, required this.setsPlanned});
+  const _FinishSheet({
+    required this.setsDone,
+    required this.setsPlanned,
+    this.volume,
+  });
 
   final int setsDone;
+
+  /// Total load lifted (reps x weight), when any weight was logged.
+  final String? volume;
   final int setsPlanned;
 
   @override
@@ -662,7 +830,8 @@ class _FinishSheetState extends State<_FinishSheet> {
               Text(
                 widget.setsDone == 0
                     ? 'No sets are marked done. You can still log how the knee feels.'
-                    : '${widget.setsDone} of ${widget.setsPlanned} sets completed.',
+                    : '${widget.setsDone} of ${widget.setsPlanned} sets completed'
+                          '${widget.volume == null ? '.' : ' · ${widget.volume} lifted.'}',
               ),
               const SizedBox(height: 12),
               ScaleSliderCard(
@@ -802,12 +971,16 @@ class _WorkoutExerciseCard extends StatelessWidget {
     required this.slot,
     required this.dose,
     required this.swappedToday,
-    required this.setsDone,
+    required this.measure,
+    required this.drafts,
+    required this.unit,
+    required this.lastTime,
+    required this.suggestion,
     required this.feedback,
     required this.pain,
     required this.message,
     required this.restRemaining,
-    required this.onToggleSet,
+    required this.onCompleteSet,
     required this.onStartRest,
     required this.onPain,
     required this.onFeedback,
@@ -820,12 +993,18 @@ class _WorkoutExerciseCard extends StatelessWidget {
   final PlanExercise slot;
   final Prescription dose;
   final bool swappedToday;
-  final int setsDone;
+  final SetMeasure measure;
+  final List<_SetDraft> drafts;
+  final WeightUnit unit;
+
+  /// Summary of the last logged performance, such as "3 x 10 @ 20 kg".
+  final String? lastTime;
+  final String? suggestion;
   final ExerciseFeedback? feedback;
   final _PainBand? pain;
   final String? message;
   final int restRemaining;
-  final ValueChanged<int> onToggleSet;
+  final ValueChanged<int> onCompleteSet;
   final VoidCallback onStartRest;
   final ValueChanged<_PainBand> onPain;
   final ValueChanged<ExerciseFeedback> onFeedback;
@@ -911,24 +1090,16 @@ class _WorkoutExerciseCard extends StatelessWidget {
             const SizedBox(height: 8),
             _cue(context, Icons.speed, 'Effort', dose.effort),
             const SizedBox(height: 16),
-            Text(
-              'Sets',
-              style: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            Row(
               children: [
-                for (var i = 1; i <= dose.sets; i++)
-                  FilterChip(
-                    label: Text('Set $i'),
-                    selected: setsDone >= i,
-                    onSelected: (_) => onToggleSet(i),
+                Expanded(
+                  child: Text(
+                    'Log each set',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
+                ),
                 if (dose.restSeconds > 0)
                   ActionChip(
                     avatar: const Icon(Icons.hourglass_bottom, size: 18),
@@ -941,6 +1112,37 @@ class _WorkoutExerciseCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (lastTime != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Last time: $lastTime',
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (suggestion != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.trending_up, size: 16, color: AppTheme.teal),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(suggestion!, style: textTheme.bodySmall),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            for (var i = 0; i < drafts.length; i++)
+              _SetRow(
+                number: i + 1,
+                draft: drafts[i],
+                measure: measure,
+                unit: unit,
+                onComplete: () => onCompleteSet(i),
+              ),
             const SizedBox(height: 16),
             Text(
               'Instructions',
@@ -1106,6 +1308,99 @@ class _WorkoutExerciseCard extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SetRow extends StatelessWidget {
+  const _SetRow({
+    required this.number,
+    required this.draft,
+    required this.measure,
+    required this.unit,
+    required this.onComplete,
+  });
+
+  final int number;
+  final _SetDraft draft;
+  final SetMeasure measure;
+  final WeightUnit unit;
+  final VoidCallback onComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final done = draft.done;
+    InputDecoration decoration(String label, {String? hint}) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              'Set $number',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: done ? scheme.primary : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: TextField(
+              controller: draft.value,
+              enabled: !done,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: decoration(measure.fieldLabel),
+            ),
+          ),
+          if (measure.tracksWeight) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: draft.weight,
+                enabled: !done,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textInputAction: TextInputAction.done,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^\d*[.,]?\d{0,2}'),
+                  ),
+                ],
+                decoration: decoration(unit.label, hint: 'Bodyweight'),
+                onSubmitted: (_) => onComplete(),
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          done
+              ? IconButton.filled(
+                  tooltip: 'Undo set $number',
+                  onPressed: onComplete,
+                  icon: const Icon(Icons.check),
+                )
+              : IconButton.outlined(
+                  tooltip: 'Complete set $number',
+                  onPressed: onComplete,
+                  icon: const Icon(Icons.check),
+                ),
         ],
       ),
     );

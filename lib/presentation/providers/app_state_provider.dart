@@ -358,6 +358,11 @@ class AppController extends AsyncNotifier<AppState> {
     );
   }
 
+  Future<void> updateWeightUnit(WeightUnit unit) async {
+    final current = await _currentState();
+    await _save(current.copyWith(weightUnit: unit));
+  }
+
   Future<void> updateThemeMode(ThemeMode mode) async {
     final current = await _currentState();
     await _save(current.copyWith(themeMode: mode.name));

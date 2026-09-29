@@ -2,6 +2,7 @@ import 'package:acl_rehab/core/constants/app_constants.dart';
 import 'package:acl_rehab/core/navigation/app_router.dart';
 import 'package:acl_rehab/core/theme/app_theme.dart';
 import 'package:acl_rehab/domain/models/assessment.dart';
+import 'package:acl_rehab/domain/models/workout_log.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/clinical_disclaimer_banner.dart';
 import 'package:acl_rehab/presentation/widgets/section_header.dart';
@@ -90,6 +91,32 @@ class AboutScreen extends ConsumerWidget {
                                   await ref
                                       .read(appControllerProvider.notifier)
                                       .updateThemeMode(selection.first);
+                                },
+                              ),
+                              const SizedBox(height: 18),
+                              Text(
+                                'Weight unit',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 10),
+                              SegmentedButton<WeightUnit>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: WeightUnit.kg,
+                                    label: Text('Kilograms (kg)'),
+                                  ),
+                                  ButtonSegment(
+                                    value: WeightUnit.lb,
+                                    label: Text('Pounds (lb)'),
+                                  ),
+                                ],
+                                selected: {appState.weightUnit},
+                                onSelectionChanged: (selection) async {
+                                  HapticFeedback.selectionClick();
+                                  await ref
+                                      .read(appControllerProvider.notifier)
+                                      .updateWeightUnit(selection.first);
                                 },
                               ),
                               const SizedBox(height: 18),

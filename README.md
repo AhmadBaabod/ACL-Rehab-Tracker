@@ -70,9 +70,13 @@ Assessment -> Personalized plan -> Logged sessions -> Reassessment -> Updated pl
 
 ### Exercises and alternatives
 
-- 59 exercises across five phases, each tagged with a training purpose (for
-  example knee extension range, quadriceps strength, landing mechanics) and
-  the equipment it needs beyond household basics.
+- 76 exercises across five phases, each tagged with a training purpose (for
+  example knee extension range, quadriceps strength, core stability, landing
+  mechanics) and the equipment it needs beyond household basics. They include
+  machine leg extensions (90-45 degrees first, full range from about week 12,
+  both blocked by a "No Open Chain Extension" restriction), hip thrusts,
+  Nordic hamstring curls, barbell squats and trap bar deadlifts, core work,
+  low box jumps, and late-stage agility and deceleration drills.
 - Alternatives always share the exercise's purpose, stay within the current
   phase and unlock criteria, and are labeled easier, similar, or harder, with
   the reason they fit and what blocks unavailable options. They can be used for
@@ -80,11 +84,16 @@ Assessment -> Personalized plan -> Logged sessions -> Reassessment -> Updated pl
 
 ### Progress tracking
 
-- Workouts record sets completed, per-exercise feedback, pain after, effort,
-  and notes.
+- Workouts log every set: reps and weight for strength exercises (in kg or
+  lb, set on the About tab), reps for control drills, and seconds or minutes
+  for holds and continuous work. Fields are pre-filled from the last session,
+  and the app suggests adding weight once every set reaches the top of the
+  rep range. Per-exercise feedback, pain after, effort, and notes are
+  recorded too.
 - The Progress tab summarizes 7-day, 30-day, 90-day, or all-time periods:
   consistency against the plan, streaks, average pain and effort, set
-  completion, weekly sessions, pain and effort trends, exercise feedback mix,
+  completion, volume lifted, weekly sessions, pain and effort trends,
+  exercise feedback mix, the heaviest weight per session for each exercise,
   strength, balance, and hop symmetry over time, assessment history with
   comparisons, and plain-language insights ("You are improving").
 

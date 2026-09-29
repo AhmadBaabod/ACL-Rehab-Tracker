@@ -51,6 +51,13 @@ Future<void> _tapText(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapTooltip(WidgetTester tester, String tooltip) async {
+  final finder = find.byTooltip(tooltip);
+  await _reveal(tester, finder);
+  await tester.tap(finder.first);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _next(WidgetTester tester) async {
   await tester.tap(find.text('Next'));
   await tester.pumpAndSettle();
@@ -149,8 +156,16 @@ void main() {
       await tester.tap(find.text('Workout').last);
       await tester.pumpAndSettle();
       expect(find.textContaining('Exercise 1 of'), findsOneWidget);
-      await _tapText(tester, 'Set 1');
-      await _tapText(tester, 'Set 2');
+      // Reps and weight are entered for each set.
+      final repsFields = find.widgetWithText(TextField, 'Reps');
+      final weightFields = find.widgetWithText(TextField, 'kg');
+      await _reveal(tester, repsFields.first);
+      expect(weightFields, findsWidgets);
+      await tester.enterText(repsFields.at(0), '10');
+      await tester.enterText(weightFields.at(0), '5');
+      await _tapTooltip(tester, 'Complete set 1');
+      await _tapTooltip(tester, 'Complete set 2');
+      expect(find.byTooltip('Undo set 1'), findsOneWidget);
       await _tapText(tester, 'Just Right');
       expect(find.textContaining('Holding this dose'), findsOneWidget);
 
@@ -161,7 +176,7 @@ void main() {
       await tester.tap(find.text('Use today').first);
       await tester.pumpAndSettle();
       expect(find.textContaining('Swapped in for today'), findsOneWidget);
-      await _tapText(tester, 'Set 1');
+      await _tapTooltip(tester, 'Complete set 1');
 
       await _tapText(tester, 'Finish workout early');
       expect(find.text('Save workout'), findsOneWidget);
@@ -175,6 +190,10 @@ void main() {
       expect(saved.workoutLogs, hasLength(1));
       final log = saved.workoutLogs.single;
       expect(log.completedSets, 3);
+      final firstSet = log.entries.first.sets.first;
+      expect(firstSet.reps, 10);
+      expect(firstSet.weightKg, 5);
+      expect(log.entries.first.sets, hasLength(2));
       expect(
         log.entries.where((entry) => entry.substitutedFromId != null),
         hasLength(1),

@@ -749,20 +749,29 @@ class ShareBar extends StatelessWidget {
 }
 
 /// A compact single-metric trend for small multiples (one chart per metric
-/// instead of many converging lines on one plot).
+/// instead of many converging lines on one plot). With a [target], the scale
+/// is fixed at 40-100 for symmetry percentages; without one it fits the data.
 class MetricSparkTile extends StatelessWidget {
   const MetricSparkTile({
     required this.title,
     required this.points,
-    this.target = 90,
+    this.target,
+    this.format,
     this.suffix = '%',
     super.key,
   });
 
   final String title;
   final List<ChartPoint> points;
-  final double target;
+  final double? target;
   final String suffix;
+
+  /// Formats a value (and the change) for display; defaults to a rounded
+  /// number with [suffix].
+  final String Function(double value)? format;
+
+  String _format(double value) =>
+      format?.call(value) ?? '${value.round()}$suffix';
 
   @override
   Widget build(BuildContext context) {
@@ -770,13 +779,15 @@ class MetricSparkTile extends StatelessWidget {
     final delta = points.length > 1 ? latest - points.first.value : null;
     final textTheme = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
-    final atTarget = latest >= target;
+    final goal = target;
+    final changed = delta != null && delta.abs() >= 0.05;
+    final up = (delta ?? 0) > 0;
 
     return Semantics(
       label:
-          '$title: ${latest.round()}$suffix'
-          '${delta == null ? '' : ', ${delta >= 0 ? 'up' : 'down'} ${delta.abs().round()} since ${shortDate(points.first.date)}'}'
-          ', target ${target.round()}$suffix',
+          '$title: ${_format(latest)}'
+          '${changed ? ', ${up ? 'up' : 'down'} ${_format(delta.abs())} since ${shortDate(points.first.date)}' : ''}'
+          '${goal == null ? '' : ', target ${_format(goal)}'}',
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.all(12),
@@ -791,6 +802,8 @@ class MetricSparkTile extends StatelessWidget {
             children: [
               Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: textTheme.labelMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -799,32 +812,32 @@ class MetricSparkTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '${latest.round()}$suffix',
-                    style: textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+                  Flexible(
+                    child: Text(
+                      _format(latest),
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  if (delta != null && delta.round() != 0)
+                  if (changed)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            delta > 0
-                                ? Icons.arrow_upward
-                                : Icons.arrow_downward,
+                            up ? Icons.arrow_upward : Icons.arrow_downward,
                             size: 14,
-                            color: delta > 0
+                            color: up
                                 ? ChartColors.goodText(context)
                                 : ChartColors.criticalText(context),
                           ),
                           Text(
-                            '${delta.abs().round()}',
+                            _format(delta.abs()),
                             style: textTheme.labelMedium?.copyWith(
-                              color: delta > 0
+                              color: up
                                   ? ChartColors.goodText(context)
                                   : ChartColors.criticalText(context),
                               fontWeight: FontWeight.w700,
@@ -842,7 +855,7 @@ class MetricSparkTile extends StatelessWidget {
                 child: CustomPaint(
                   painter: _SparkPainter(
                     points: points,
-                    target: target,
+                    target: goal,
                     line: ChartColors.series(context, 1),
                     surface:
                         Theme.of(context).cardTheme.color ?? scheme.surface,
@@ -852,9 +865,11 @@ class MetricSparkTile extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                atTarget
-                    ? 'At target (${target.round()}$suffix)'
-                    : 'Target ${target.round()}$suffix',
+                goal == null
+                    ? '${points.length} ${points.length == 1 ? 'session' : 'sessions'} since ${shortDate(points.first.date)}'
+                    : latest >= goal
+                    ? 'At target (${_format(goal)})'
+                    : 'Target ${_format(goal)}',
                 style: textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -877,26 +892,39 @@ class _SparkPainter extends CustomPainter {
   });
 
   final List<ChartPoint> points;
-  final double target;
+  final double? target;
   final Color line;
   final Color surface;
   final Color targetColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const minY = 40.0;
-    const maxY = 100.0;
+    var minY = 40.0;
+    var maxY = 100.0;
+    if (target == null) {
+      final values = points.map((point) => point.value);
+      minY = values.reduce(math.min);
+      maxY = values.reduce(math.max);
+      final pad = maxY == minY
+          ? math.max(1.0, maxY * 0.1)
+          : (maxY - minY) * 0.15;
+      minY -= pad;
+      maxY += pad;
+    }
     double y(double value) =>
         size.height -
         size.height * ((value - minY) / (maxY - minY)).clamp(0.0, 1.0);
-    final targetY = y(target);
-    canvas.drawLine(
-      Offset(0, targetY),
-      Offset(size.width, targetY),
-      Paint()
-        ..color = targetColor
-        ..strokeWidth = 1,
-    );
+    final goal = target;
+    if (goal != null) {
+      final targetY = y(goal);
+      canvas.drawLine(
+        Offset(0, targetY),
+        Offset(size.width, targetY),
+        Paint()
+          ..color = targetColor
+          ..strokeWidth = 1,
+      );
+    }
     final count = points.length;
     final offsets = [
       for (var i = 0; i < count; i++)
@@ -926,5 +954,5 @@ class _SparkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparkPainter old) =>
-      old.points != points || old.line != line;
+      old.points != points || old.line != line || old.target != target;
 }

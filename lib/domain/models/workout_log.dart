@@ -1,5 +1,60 @@
 import 'package:acl_rehab/domain/models/session_log.dart';
 
+enum WeightUnit { kg, lb }
+
+extension WeightUnitX on WeightUnit {
+  static const _poundsPerKg = 2.20462;
+
+  String get label => name;
+
+  double fromKg(double kg) => this == WeightUnit.kg ? kg : kg * _poundsPerKg;
+
+  double toKg(double value) =>
+      this == WeightUnit.kg ? value : value / _poundsPerKg;
+
+  /// Typical plate increment in this unit.
+  double get increment => this == WeightUnit.kg ? 2.5 : 5;
+
+  String format(double kg) {
+    final value = fromKg(kg);
+    final rounded = (value * 10).round() / 10;
+    final text = rounded == rounded.roundToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(1);
+    return '$text $label';
+  }
+}
+
+/// One completed set. Rep-based sets record [reps] and optionally
+/// [weightKg]; timed sets record [seconds].
+class SetLog {
+  const SetLog({this.reps, this.weightKg, this.seconds});
+
+  final int? reps;
+
+  /// External load in kilograms; null or 0 means bodyweight.
+  final double? weightKg;
+  final int? seconds;
+
+  bool get isWeighted => (weightKg ?? 0) > 0;
+
+  double get volumeKg => (reps ?? 0) * (weightKg ?? 0);
+
+  Map<String, dynamic> toJson() => {
+    'reps': reps,
+    'weightKg': weightKg,
+    'seconds': seconds,
+  };
+
+  factory SetLog.fromJson(Map<String, dynamic> data) {
+    return SetLog(
+      reps: data['reps'] as int?,
+      weightKg: (data['weightKg'] as num?)?.toDouble(),
+      seconds: data['seconds'] as int?,
+    );
+  }
+}
+
 class WorkoutExerciseEntry {
   const WorkoutExerciseEntry({
     required this.exerciseId,
@@ -8,18 +63,31 @@ class WorkoutExerciseEntry {
     required this.completedSets,
     this.feedback,
     this.substitutedFromId,
+    this.sets = const [],
   });
 
   final String exerciseId;
   final String exerciseName;
   final int plannedSets;
   final int completedSets;
+
+  /// Reps, weight, or time for each completed set.
+  final List<SetLog> sets;
   final ExerciseFeedback? feedback;
 
   /// Set when the user swapped in an alternative for this workout.
   final String? substitutedFromId;
 
   bool get isCompleted => completedSets >= plannedSets && plannedSets > 0;
+
+  double get volumeKg => sets.fold(0, (sum, set) => sum + set.volumeKg);
+
+  /// Heaviest load lifted in this entry, if any set was weighted.
+  double? get topWeightKg {
+    final weighted = sets.where((set) => set.isWeighted);
+    if (weighted.isEmpty) return null;
+    return weighted.map((set) => set.weightKg!).reduce((a, b) => a > b ? a : b);
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -29,6 +97,7 @@ class WorkoutExerciseEntry {
       'completedSets': completedSets,
       'feedback': feedback?.name,
       'substitutedFromId': substitutedFromId,
+      'sets': sets.map((set) => set.toJson()).toList(),
     };
   }
 
@@ -44,6 +113,11 @@ class WorkoutExerciseEntry {
       completedSets: data['completedSets'] as int? ?? 0,
       feedback: feedback,
       substitutedFromId: data['substitutedFromId'] as String?,
+      sets: (data['sets'] as List<dynamic>? ?? const [])
+          .map(
+            (item) => SetLog.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList(),
     );
   }
 }
@@ -87,6 +161,8 @@ class WorkoutLog {
 
   int get exercisesCompleted =>
       entries.where((entry) => entry.completedSets > 0).length;
+
+  double get volumeKg => entries.fold(0, (sum, entry) => sum + entry.volumeKg);
 
   double get completionRate =>
       plannedSets == 0 ? 0 : (completedSets / plannedSets).clamp(0.0, 1.0);

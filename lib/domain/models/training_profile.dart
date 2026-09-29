@@ -10,6 +10,7 @@ enum EquipmentType {
   stationaryBike,
   openSpace,
   partner,
+  barbell,
 }
 
 extension RecoveryGoalX on RecoveryGoal {
@@ -73,6 +74,8 @@ extension EquipmentTypeX on EquipmentType {
         return 'Open space (15-20 m)';
       case EquipmentType.partner:
         return 'Partner or PT';
+      case EquipmentType.barbell:
+        return 'Barbell or trap bar';
     }
   }
 
@@ -92,6 +95,8 @@ extension EquipmentTypeX on EquipmentType {
         return 'Field, court, or track for running drills';
       case EquipmentType.partner:
         return 'Someone to assist balance drills';
+      case EquipmentType.barbell:
+        return 'With plates, ideally a rack';
     }
   }
 }

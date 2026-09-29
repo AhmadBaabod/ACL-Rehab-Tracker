@@ -19,6 +19,7 @@ class AppState {
     this.plans = const [],
     this.workoutLogs = const [],
     this.reassessmentSnoozedUntil,
+    this.weightUnit = WeightUnit.kg,
   });
 
   final Assessment? assessment;
@@ -39,6 +40,25 @@ class AppState {
   /// Completed workouts, oldest first.
   final List<WorkoutLog> workoutLogs;
   final DateTime? reassessmentSnoozedUntil;
+
+  /// Unit for entering and showing exercise loads.
+  final WeightUnit weightUnit;
+
+  /// The sets logged for [exerciseId] in its most recent workout.
+  List<SetLog> lastSetsFor(String exerciseId) {
+    WorkoutLog? latest;
+    List<SetLog> sets = const [];
+    for (final log in workoutLogs) {
+      for (final entry in log.entries) {
+        if (entry.exerciseId != exerciseId || entry.sets.isEmpty) continue;
+        if (latest == null || log.completedAt.isAfter(latest.completedAt)) {
+          latest = log;
+          sets = entry.sets;
+        }
+      }
+    }
+    return sets;
+  }
 
   RehabPlan? get activePlan => plans.isEmpty ? null : plans.last;
 
@@ -157,6 +177,7 @@ class AppState {
     List<WorkoutLog>? workoutLogs,
     DateTime? reassessmentSnoozedUntil,
     bool clearReassessmentSnooze = false,
+    WeightUnit? weightUnit,
   }) {
     return AppState(
       assessment: assessment ?? this.assessment,
@@ -173,6 +194,7 @@ class AppState {
       reassessmentSnoozedUntil: clearReassessmentSnooze
           ? null
           : reassessmentSnoozedUntil ?? this.reassessmentSnoozedUntil,
+      weightUnit: weightUnit ?? this.weightUnit,
     );
   }
 
@@ -196,6 +218,7 @@ class AppState {
       'plans': plans.map((item) => item.toJson()).toList(),
       'workoutLogs': workoutLogs.map((item) => item.toJson()).toList(),
       'reassessmentSnoozedUntil': reassessmentSnoozedUntil?.toIso8601String(),
+      'weightUnit': weightUnit.name,
     };
   }
 
@@ -248,6 +271,10 @@ class AppState {
       workoutLogs: list('workoutLogs', WorkoutLog.fromJson),
       reassessmentSnoozedUntil: DateTime.tryParse(
         data['reassessmentSnoozedUntil'] as String? ?? '',
+      ),
+      weightUnit: WeightUnit.values.firstWhere(
+        (item) => item.name == data['weightUnit'],
+        orElse: () => WeightUnit.kg,
       ),
     );
   }

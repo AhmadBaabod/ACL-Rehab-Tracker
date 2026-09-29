@@ -72,7 +72,16 @@ Assessment -> RehabPlan (generated + validated) -> WorkoutLogs/feedback
 - **Alternatives** (`domain/services/exercise_alternatives.dart`): candidates
   must share the exercise's `TrainingPurpose` (`related` purposes are only a
   fallback) and never exceed the current phase. Tests enforce that every
-  `alternativeExerciseIds` entry shares or relates to the purpose.
+  `alternativeExerciseIds` entry shares or relates to the purpose. When the
+  generator needs a substitute for missing equipment, it tries the ideal
+  exercise's `alternativeExerciseIds` first, in listed order.
+- **Set logging** (`domain/services/set_logging.dart`): `setMeasureFor`
+  decides whether a set records reps plus weight (loadable strength
+  purposes), reps only, seconds, or minutes (derived from the prescription's
+  reps and hold text). `WorkoutExerciseEntry.sets` holds `SetLog`s.
+  Weight is always stored in kilograms; `AppState.weightUnit` only affects
+  input and display (`WeightUnit.format`, `toKg`). `AppState.lastSetsFor`
+  pre-fills the next workout and drives `loadSuggestion`.
 
 ### Exercise catalog
 
@@ -108,6 +117,11 @@ difficulty count as later progressions. `ExerciseCatalog.sessionFor` and
   in `core/navigation/app_tabs.dart`; use `controller.selectTab(AppTab.x)`.
 - `OnboardingScreen` serves three `AssessmentMode`s (initial, retake,
   reassessment). The review step previews the real generated plan.
+- `SessionScreen` freezes each exercise's dose for the whole workout
+  (`_doses`), so feedback changes the next session rather than the current
+  one. Set drafts own `TextEditingController`s; `_clearDrafts` disposes them
+  in a post-frame callback because their fields are still mounted for one
+  more frame.
 
 ### UI conventions
 

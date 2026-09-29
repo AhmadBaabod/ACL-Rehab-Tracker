@@ -24,6 +24,7 @@ enum TrainingPurpose {
   quadStrength,
   singleLegStrength,
   hipStability,
+  coreStability,
   posteriorChain,
   hamstringStrength,
   calfStrength,
@@ -97,6 +98,8 @@ extension TrainingPurposeX on TrainingPurpose {
         return 'Single-leg strength';
       case TrainingPurpose.hipStability:
         return 'Hip stability';
+      case TrainingPurpose.coreStability:
+        return 'Core stability';
       case TrainingPurpose.posteriorChain:
         return 'Glutes & posterior chain';
       case TrainingPurpose.hamstringStrength:

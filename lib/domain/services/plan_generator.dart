@@ -170,7 +170,17 @@ class PlanContext {
     final available = unlocked.where(hasEquipment).toList();
     if (available.isEmpty) return null;
     final idealRank = rank(ideal.exercise);
+    // The ideal exercise's curated alternatives come first, then the
+    // closest difficulty, then the most recent phase.
+    final curated = ideal.exercise.alternativeExerciseIds;
+    int curatedIndex(Exercise item) {
+      final index = curated.indexOf(item.id);
+      return index < 0 ? curated.length : index;
+    }
+
     available.sort((a, b) {
+      final byCurated = curatedIndex(a).compareTo(curatedIndex(b));
+      if (byCurated != 0) return byCurated;
       final byDistance = (rank(a) - idealRank).abs().compareTo(
         (rank(b) - idealRank).abs(),
       );
@@ -374,6 +384,7 @@ class PlanContext {
         return 0;
       case TrainingPurpose.quadActivation:
       case TrainingPurpose.balance:
+      case TrainingPurpose.coreStability:
         return 30;
       case TrainingPurpose.changeOfDirection:
         return 120;
@@ -407,6 +418,8 @@ class PlanContext {
         return 'Easy: you can hold a conversation';
       case TrainingPurpose.balance:
         return 'Controlled: knee stays aligned over the foot';
+      case TrainingPurpose.coreStability:
+        return 'Controlled: steady breathing, no knee pain';
       default:
         break;
     }
@@ -525,6 +538,7 @@ class PlanGenerator {
       TrainingPurpose.calfStrength: 4,
       TrainingPurpose.hamstringStrength: 4,
       TrainingPurpose.conditioning: 3,
+      TrainingPurpose.coreStability: 3,
     },
     RehabPhase.advancedStrength: {
       TrainingPurpose.quadStrength: 9,
@@ -534,6 +548,7 @@ class PlanGenerator {
       TrainingPurpose.balance: 6,
       TrainingPurpose.hipStability: 5,
       TrainingPurpose.calfStrength: 4,
+      TrainingPurpose.coreStability: 4,
     },
     RehabPhase.neuromuscularControl: {
       TrainingPurpose.singleLegStrength: 9,
@@ -545,6 +560,7 @@ class PlanGenerator {
       TrainingPurpose.plyometric: 5,
       TrainingPurpose.hamstringStrength: 4,
       TrainingPurpose.calfStrength: 3,
+      TrainingPurpose.coreStability: 4,
     },
     RehabPhase.returnToSport: {
       TrainingPurpose.changeOfDirection: 9,
@@ -556,6 +572,7 @@ class PlanGenerator {
       TrainingPurpose.landing: 5,
       TrainingPurpose.balance: 5,
       TrainingPurpose.hamstringStrength: 4,
+      TrainingPurpose.coreStability: 3,
     },
   };
 
@@ -576,6 +593,7 @@ class PlanGenerator {
     TrainingPurpose.posteriorChain,
     TrainingPurpose.hamstringStrength,
     TrainingPurpose.hipStability,
+    TrainingPurpose.coreStability,
     TrainingPurpose.balance,
     TrainingPurpose.calfStrength,
     TrainingPurpose.circulation,

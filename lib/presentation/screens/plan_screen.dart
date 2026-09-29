@@ -10,6 +10,7 @@ import 'package:acl_rehab/domain/models/rehab_plan.dart';
 import 'package:acl_rehab/domain/models/training_profile.dart';
 import 'package:acl_rehab/domain/services/assessment_comparison.dart';
 import 'package:acl_rehab/domain/services/reassessment_advisor.dart';
+import 'package:acl_rehab/domain/services/set_logging.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/common.dart';
 import 'package:acl_rehab/presentation/widgets/exercise_sheets.dart';
@@ -589,6 +590,10 @@ class _PlanExerciseTile extends ConsumerWidget {
     final dose = item.doseFor(appState.exerciseProgressions[exercise.id]);
     final scheme = Theme.of(context).colorScheme;
     final changed = dose.sets != item.prescription.sets;
+    final last = summarizeSets(
+      appState.lastSetsFor(exercise.id),
+      appState.weightUnit,
+    );
 
     return ListTile(
       onTap: () => showExerciseDetailSheet(context, ref, item: item),
@@ -612,6 +617,14 @@ class _PlanExerciseTile extends ConsumerWidget {
             '${dose.summary} · ${dose.frequency}'
             '${changed ? ' · ${dose.sets > item.prescription.sets ? 'progressed' : 'eased'} from your feedback' : ''}',
           ),
+          if (last != null)
+            Text(
+              'Last: $last',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           if (item.substitutionReason != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -652,6 +665,8 @@ IconData purposeIcon(TrainingPurpose purpose) {
       return Icons.fitness_center;
     case TrainingPurpose.hipStability:
       return Icons.join_inner;
+    case TrainingPurpose.coreStability:
+      return Icons.center_focus_strong;
     case TrainingPurpose.balance:
       return Icons.self_improvement;
     case TrainingPurpose.landing:

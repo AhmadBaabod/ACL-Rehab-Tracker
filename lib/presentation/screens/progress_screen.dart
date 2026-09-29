@@ -7,6 +7,7 @@ import 'package:acl_rehab/domain/models/assessment.dart';
 import 'package:acl_rehab/domain/models/assessment_record.dart';
 import 'package:acl_rehab/domain/models/milestone_check_in.dart';
 import 'package:acl_rehab/domain/models/session_log.dart';
+import 'package:acl_rehab/domain/models/workout_log.dart';
 import 'package:acl_rehab/domain/services/progress_analytics.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/charts.dart';
@@ -241,10 +242,52 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                         width: width,
                         child: MetricSparkTile(
                           title: '${entry.key} symmetry',
+                          target: 90,
                           points: [
                             for (final point in entry.value)
                               ChartPoint(point.date, point.value),
                           ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Strength progress'),
+          const SizedBox(height: 10),
+          if (snapshot.loadSeries.isEmpty)
+            const EmptyStateCard(
+              icon: Icons.fitness_center,
+              title: 'No weights logged in this period',
+              body:
+                  'Enter the weight for each set during a workout. The heaviest '
+                  'weight per session is charted here for each exercise.',
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 720
+                    ? 3
+                    : constraints.maxWidth >= 420
+                    ? 2
+                    : 1;
+                final width =
+                    (constraints.maxWidth - (columns - 1) * 12) / columns;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final entry in snapshot.loadSeries.entries.take(6))
+                      SizedBox(
+                        width: width,
+                        child: MetricSparkTile(
+                          title: entry.key,
+                          points: [
+                            for (final point in entry.value)
+                              ChartPoint(point.date, point.value),
+                          ],
+                          format: appState.weightUnit.format,
                         ),
                       ),
                   ],
@@ -285,7 +328,8 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                       subtitle: Text(
                         '${log.completedSets}/${log.plannedSets} sets · '
                         '${log.exercisesCompleted} exercises · pain ${log.painAfter}/10 · '
-                        'effort ${log.effort}/10',
+                        'effort ${log.effort}/10'
+                        '${log.volumeKg > 0 ? ' · ${appState.weightUnit.format(log.volumeKg)}' : ''}',
                       ),
                     ),
                 ],
@@ -446,18 +490,23 @@ class _VerdictCard extends StatelessWidget {
   }
 }
 
-class _StatsGrid extends StatelessWidget {
+class _StatsGrid extends ConsumerWidget {
   const _StatsGrid({required this.snapshot});
 
   final ProgressSnapshot snapshot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final adherence = snapshot.adherence;
     final pain = snapshot.averagePainAfter;
     final effort = snapshot.averageEffort;
     final completion = snapshot.setCompletion;
 
+    final unit = ref.watch(
+      appControllerProvider.select(
+        (value) => value.value?.weightUnit ?? WeightUnit.kg,
+      ),
+    );
     return GridView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -518,6 +567,13 @@ class _StatsGrid extends StatelessWidget {
           subtitle: '${snapshot.setsCompleted} of ${snapshot.setsPlanned} sets',
           icon: Icons.checklist,
           color: AppTheme.mintGreen,
+        ),
+        MetricCard(
+          title: 'Volume',
+          value: snapshot.volumeKg > 0 ? unit.format(snapshot.volumeKg) : '-',
+          subtitle: 'reps x weight lifted',
+          icon: Icons.fitness_center,
+          color: AppTheme.softBlue,
         ),
       ],
     );

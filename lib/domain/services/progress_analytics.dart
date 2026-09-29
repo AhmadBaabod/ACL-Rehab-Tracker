@@ -109,6 +109,8 @@ class ProgressSnapshot {
     required this.insights,
     required this.verdict,
     required this.recentWorkouts,
+    this.volumeKg = 0,
+    this.loadSeries = const {},
   });
 
   final ProgressPeriod period;
@@ -136,6 +138,13 @@ class ProgressSnapshot {
   final ProgressVerdict verdict;
   final List<WorkoutLog> recentWorkouts;
 
+  /// Total reps x weight lifted in the period, in kilograms.
+  final double volumeKg;
+
+  /// Heaviest weight (kg) per workout, by exercise name, most recently
+  /// trained exercises first.
+  final Map<String, List<TrendPoint>> loadSeries;
+
   ProgressSnapshot withInsights(
     List<ProgressInsight> insights,
     ProgressVerdict verdict,
@@ -161,6 +170,8 @@ class ProgressSnapshot {
       insights: insights,
       verdict: verdict,
       recentWorkouts: recentWorkouts,
+      volumeKg: volumeKg,
+      loadSeries: loadSeries,
     );
   }
 
@@ -274,9 +285,29 @@ class ProgressAnalytics {
       insights: const [],
       verdict: ProgressVerdict.gettingStarted,
       recentWorkouts: workouts.reversed.take(5).toList(),
+      volumeKg: workouts.fold(0, (sum, log) => sum + log.volumeKg),
+      loadSeries: _loadSeries(workouts),
     );
     final insights = _insights(state, snapshot, workouts);
     return snapshot.withInsights(insights, _verdict(insights, snapshot));
+  }
+
+  static Map<String, List<TrendPoint>> _loadSeries(List<WorkoutLog> workouts) {
+    final series = <String, List<TrendPoint>>{};
+    final lastSeen = <String, DateTime>{};
+    for (final log in workouts) {
+      for (final entry in log.entries) {
+        final top = entry.topWeightKg;
+        if (top == null) continue;
+        series
+            .putIfAbsent(entry.exerciseName, () => [])
+            .add(TrendPoint(log.completedAt, top));
+        lastSeen[entry.exerciseName] = log.completedAt;
+      }
+    }
+    final names = series.keys.toList()
+      ..sort((a, b) => lastSeen[b]!.compareTo(lastSeen[a]!));
+    return {for (final name in names) name: series[name]!};
   }
 
   static List<WeekBucket> _weekly(AppState state, DateTime today, int target) {
@@ -504,6 +535,26 @@ class ProgressAnalytics {
           detail:
               'From ${points.first.value.round()}% to ${points.last.value.round()}% '
               '(target 90%).',
+        ),
+      );
+    }
+
+    final heavier = snapshot.loadSeries.entries
+        .where(
+          (entry) =>
+              entry.value.length >= 2 &&
+              entry.value.last.value > entry.value.first.value,
+        )
+        .map((entry) => entry.key)
+        .toList();
+    if (heavier.isNotEmpty) {
+      insights.add(
+        ProgressInsight(
+          trend: InsightTrend.improving,
+          title: 'Lifting heavier',
+          detail:
+              'Top weight went up on ${heavier.take(3).join(', ')}'
+              '${heavier.length > 3 ? ' and ${heavier.length - 3} more' : ''}.',
         ),
       );
     }
