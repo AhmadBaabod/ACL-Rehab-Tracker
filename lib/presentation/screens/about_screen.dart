@@ -5,6 +5,7 @@ import 'package:acl_rehab/domain/models/assessment.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/clinical_disclaimer_banner.dart';
 import 'package:acl_rehab/presentation/widgets/section_header.dart';
+import 'package:acl_rehab/presentation/widgets/training_setup_form.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -95,13 +96,41 @@ class AboutScreen extends ConsumerWidget {
                               const Divider(height: 1),
                               const SizedBox(height: 18),
                               Text(
+                                'Training setup',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Change your goal, training days, session length, or equipment. Your plan is rebuilt to match.',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      showTrainingSetupSheet(context, ref),
+                                  icon: const Icon(Icons.tune),
+                                  label: const Text('Edit training setup'),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              const Divider(height: 1),
+                              const SizedBox(height: 18),
+                              Text(
                                 'Assessment',
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Retake the initial assessment if your symptoms, restrictions, graft details, or surgery timeline need to be corrected.',
+                                'Use Reassess (Progress tab) to record new results. Correct the initial assessment only if surgery details, graft type, or restrictions were entered wrongly.',
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: Theme.of(
@@ -117,7 +146,7 @@ class AboutScreen extends ConsumerWidget {
                                       _confirmRetakeAssessment(context, ref),
                                   icon: const Icon(Icons.restart_alt),
                                   label: const Text(
-                                    'Retake Initial Assessment',
+                                    'Correct Initial Assessment',
                                   ),
                                 ),
                               ),
@@ -138,7 +167,7 @@ class AboutScreen extends ConsumerWidget {
                         icon: Icons.science_outlined,
                         title: 'Evidence-Based Rehabilitation',
                         body:
-                            'Exercise choices are structured around controlled loading, progressive strength, neuromuscular control, and late-stage return-to-sport criteria. The app records feedback so future sessions can recommend regression, maintenance, or progression.',
+                            'Exercise choices are structured around controlled loading, progressive strength, neuromuscular control, and late-stage return-to-sport criteria. Feedback after each exercise adjusts its dose: two "Just right" sessions with low pain progress it, "Too hard" or pain of 5/10 or more steps it back.',
                       ),
                       _section(
                         context,
@@ -172,10 +201,17 @@ class AboutScreen extends ConsumerWidget {
                       ),
                       _section(
                         context,
-                        icon: Icons.auto_stories_outlined,
-                        title: 'Future References Placeholder',
+                        icon: Icons.autorenew,
+                        title: 'How Your Plan Adapts',
                         body:
-                            'The architecture is ready for authentication, cloud sync, wearable integration, AI recommendations, PT portals, push notifications, telehealth, analytics, PDF reports, and multi-language support.',
+                            'Assessment -> personalized plan -> logged sessions -> reassessment -> updated plan. Your answers set the phase, the focus areas, and which exercises fit your goal, time, and equipment. Every plan is quality-checked before it is shown. Session feedback adjusts each exercise dose, and when you improve (or symptoms rise), the app recommends a reassessment that compares your results and rebuilds the plan.',
+                      ),
+                      _section(
+                        context,
+                        icon: Icons.lock_outline,
+                        title: 'Your Data',
+                        body:
+                            'Assessments, plans, and workout history are stored only on this device. Nothing is uploaded.',
                       ),
                     ],
                   ),
@@ -201,9 +237,11 @@ class AboutScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.restart_alt),
-        title: const Text('Retake initial assessment?'),
+        title: const Text('Correct initial assessment?'),
         content: const Text(
-          'You will go through onboarding again. Your session logs, milestone check-ins, and exercise history will be kept.',
+          'You will go through every question again, starting from your '
+          'current answers. Your workouts, check-ins, and exercise history are '
+          'kept. To record progress instead, use Reassess on the Progress tab.',
         ),
         actions: [
           TextButton(
@@ -212,7 +250,7 @@ class AboutScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Retake'),
+            child: const Text('Continue'),
           ),
         ],
       ),
@@ -223,10 +261,7 @@ class AboutScreen extends ConsumerWidget {
     }
 
     HapticFeedback.mediumImpact();
-    await ref.read(appControllerProvider.notifier).retakeInitialAssessment();
-    if (context.mounted) {
-      context.go(AppRoutes.onboarding);
-    }
+    context.push(AppRoutes.retake);
   }
 
   Widget _graftSection(BuildContext context) {

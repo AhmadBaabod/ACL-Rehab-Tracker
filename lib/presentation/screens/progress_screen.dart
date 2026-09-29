@@ -1,417 +1,671 @@
 import 'package:acl_rehab/core/constants/app_constants.dart';
+import 'package:acl_rehab/core/navigation/app_router.dart';
+import 'package:acl_rehab/core/navigation/app_tabs.dart';
 import 'package:acl_rehab/core/theme/app_theme.dart';
-import 'package:acl_rehab/core/utils/phase_logic.dart';
+import 'package:acl_rehab/domain/models/app_state.dart';
 import 'package:acl_rehab/domain/models/assessment.dart';
+import 'package:acl_rehab/domain/models/assessment_record.dart';
 import 'package:acl_rehab/domain/models/milestone_check_in.dart';
+import 'package:acl_rehab/domain/models/session_log.dart';
+import 'package:acl_rehab/domain/services/progress_analytics.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
-import 'package:acl_rehab/presentation/widgets/clinical_disclaimer_banner.dart';
+import 'package:acl_rehab/presentation/widgets/charts.dart';
+import 'package:acl_rehab/presentation/widgets/common.dart';
+import 'package:acl_rehab/presentation/widgets/form_widgets.dart';
 import 'package:acl_rehab/presentation/widgets/metric_card.dart';
 import 'package:acl_rehab/presentation/widgets/section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class ProgressScreen extends ConsumerWidget {
+class ProgressScreen extends ConsumerStatefulWidget {
   const ProgressScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final appStateAsync = ref.watch(appControllerProvider);
+  ConsumerState<ProgressScreen> createState() => _ProgressScreenState();
+}
 
-    return appStateAsync.when(
-      data: (appState) {
-        final assessment = appState.assessment;
-        if (assessment == null) {
-          return const Scaffold(
-            body: Center(child: Text('Complete onboarding to track progress.')),
-          );
-        }
+class _ProgressScreenState extends ConsumerState<ProgressScreen> {
+  ProgressPeriod period = ProgressPeriod.month;
 
-        final latest = appState.latestMilestone;
-        final evaluation = evaluateRehabPhase(assessment, milestone: latest);
-        final checkIns = [...appState.activeMilestoneCheckIns]
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        final latestPain = latest?.pain ?? assessment.pain;
-        final latestSwelling = latest?.swelling ?? assessment.swelling;
+  @override
+  Widget build(BuildContext context) {
+    final appState = ref.watch(appControllerProvider).value;
+    final assessment = appState?.assessment;
+    if (appState == null || assessment == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('Complete your assessment to track progress.'),
+        ),
+      );
+    }
+    final snapshot = ProgressAnalytics.compute(appState, period);
 
-        return Scaffold(
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppConstants.horizontalPadding),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 920),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _ProgressHeader(
-                        onCheckIn: () =>
-                            _showCheckInSheet(context, ref, assessment, latest),
+    return Scaffold(
+      body: ResponsivePage(
+        maxWidth: 960,
+        children: [
+          PageHeader(
+            title: 'Progress',
+            subtitle: 'Sessions, symptoms, and test results over time.',
+            actions: [
+              FilledButton.icon(
+                onPressed: () => context.push(AppRoutes.reassess),
+                icon: const Icon(Icons.fact_check_outlined),
+                label: const Text('Reassess'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showCheckInSheet(context, appState),
+                icon: const Icon(Icons.add_chart),
+                label: const Text('Quick check-in'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _VerdictCard(snapshot: snapshot),
+          const SizedBox(height: AppConstants.sectionGap),
+          SegmentedButton<ProgressPeriod>(
+            showSelectedIcon: false,
+            segments: [
+              for (final option in ProgressPeriod.values)
+                ButtonSegment(value: option, label: Text(option.label)),
+            ],
+            selected: {period},
+            onSelectionChanged: (selection) {
+              HapticFeedback.selectionClick();
+              setState(() => period = selection.first);
+            },
+          ),
+          const SizedBox(height: 12),
+          _StatsGrid(snapshot: snapshot),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Consistency'),
+          const SizedBox(height: 10),
+          _ChartCard(
+            title: 'Sessions per week',
+            subtitle:
+                'Last 8 weeks · target ${appState.activePlan?.sessionsPerWeek ?? 3} a week',
+            child: ColumnChart(
+              bars: [
+                for (final week in snapshot.weekly)
+                  BarDatum(
+                    label: week == snapshot.weekly.last
+                        ? 'This wk'
+                        : shortDate(week.start),
+                    value: week.completed.toDouble(),
+                    detail:
+                        '${week.completed} ${week.completed == 1 ? 'session' : 'sessions'}'
+                        '${week.metTarget ? ' · target met' : ''}',
+                  ),
+              ],
+              maxValue: snapshot.weekly
+                  .map((week) => week.completed.toDouble())
+                  .fold(1, (a, b) => a > b ? a : b),
+              target: (appState.activePlan?.sessionsPerWeek ?? 3).toDouble(),
+              targetLabel: 'Target',
+              semanticsLabel:
+                  'Sessions per week for the last 8 weeks: '
+                  '${snapshot.weekly.map((week) => week.completed).join(', ')}',
+            ),
+          ),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Symptoms & difficulty'),
+          const SizedBox(height: 10),
+          _ChartCard(
+            title: 'Knee pain',
+            subtitle:
+                'From assessments, check-ins, and after each session · target 0-2',
+            child: snapshot.painSeries.isEmpty
+                ? const _NoData(
+                    text:
+                        'Pain after each session appears here once you finish a workout.',
+                  )
+                : TrendLineChart(
+                    points: [
+                      for (final point in snapshot.painSeries)
+                        ChartPoint(point.date, point.value, note: point.label),
+                    ],
+                    minY: 0,
+                    maxY: 10,
+                    target: 2,
+                    targetLabel: 'Target 2',
+                    formatValue: (value) => '${value.round()}/10',
+                    semanticsLabel: _seriesSummary(
+                      'Knee pain',
+                      snapshot.painSeries,
+                      '/10',
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 720;
+              final effort = _ChartCard(
+                title: 'Session effort',
+                subtitle: 'How hard each session felt (RPE 1-10)',
+                child: snapshot.effortSeries.length < 2
+                    ? const _NoData(
+                        text:
+                            'Log at least two workouts to see an effort trend.',
+                      )
+                    : TrendLineChart(
+                        points: [
+                          for (final point in snapshot.effortSeries)
+                            ChartPoint(point.date, point.value),
+                        ],
+                        minY: 0,
+                        maxY: 10,
+                        formatValue: (value) => '${value.round()}/10',
+                        semanticsLabel: _seriesSummary(
+                          'Session effort',
+                          snapshot.effortSeries,
+                          '/10',
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      const ClinicalDisclaimerBanner(),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      GridView(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 230,
-                              mainAxisExtent: 148,
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                            ),
-                        children: [
-                          MetricCard(
-                            title: 'Current Phase',
-                            value: evaluation.phase.shortLabel,
-                            subtitle: evaluation.phase.label,
-                            icon: Icons.timeline,
+              );
+              final feedback = _ChartCard(
+                title: 'Exercise feedback',
+                subtitle:
+                    '${snapshot.progressions} progressed · ${snapshot.regressions} eased',
+                child: snapshot.totalFeedback == 0
+                    ? const _NoData(
+                        text:
+                            'Rate exercises during a workout to see how difficulty is trending.',
+                      )
+                    : ShareBar(
+                        segments: [
+                          ShareSegment(
+                            label: 'Just right',
+                            value: snapshot
+                                .feedbackCounts[ExerciseFeedback.justRight]!,
                           ),
-                          MetricCard(
-                            title: 'Pain',
-                            value: '$latestPain/10',
-                            subtitle: latestPain <= 2
-                                ? 'meets quiet-knee goal'
-                                : 'needs monitoring',
-                            icon: Icons.show_chart,
-                            color: latestPain <= 2
-                                ? AppTheme.teal
-                                : AppTheme.amber,
+                          ShareSegment(
+                            label: 'Too hard',
+                            value: snapshot
+                                .feedbackCounts[ExerciseFeedback.tooHard]!,
                           ),
-                          MetricCard(
-                            title: 'Swelling',
-                            value: latestSwelling.label,
-                            subtitle: latestSwelling == Swelling.none
-                                ? 'quiet knee'
-                                : 'limit progression',
-                            icon: Icons.water_drop_outlined,
-                            color: latestSwelling == Swelling.none
-                                ? AppTheme.teal
-                                : AppTheme.amber,
-                          ),
-                          MetricCard(
-                            title: 'Sessions',
-                            value: '${appState.sessionLogs.length}',
-                            subtitle: 'exercise logs',
-                            icon: Icons.task_alt,
-                            color: AppTheme.mintGreen,
+                          ShareSegment(
+                            label: 'Too easy',
+                            value: snapshot
+                                .feedbackCounts[ExerciseFeedback.tooEasy]!,
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      SectionHeader(title: 'Charts'),
-                      const SizedBox(height: 10),
-                      _TrendCard(
-                        title: 'Pain Trend',
-                        icon: Icons.trending_down,
-                        values: checkIns
-                            .map((item) => item.pain)
-                            .toList()
-                            .reversed
-                            .toList(),
-                        maxValue: 10,
-                        emptyValue: assessment.pain,
-                        targetText: 'Target: 0-2/10',
-                        color: AppTheme.teal,
-                      ),
-                      const SizedBox(height: 10),
-                      _TrendCard(
-                        title: 'ROM Trend',
-                        icon: Icons.straighten,
-                        values: checkIns
-                            .map(
-                              (item) =>
-                                  item.hasFullExtension &&
-                                      item.hasFunctionalFlexion
-                                  ? 100
-                                  : item.hasFullExtension
-                                  ? 60
-                                  : 30,
-                            )
-                            .toList()
-                            .reversed
-                            .toList(),
-                        maxValue: 100,
-                        emptyValue: assessment.hasFullRom ? 100 : 40,
-                        targetText:
-                            'Target: full extension + functional flexion',
-                        color: AppTheme.softBlue,
-                      ),
-                      const SizedBox(height: 10),
-                      _TrendCard(
-                        title: 'Strength Trend',
-                        icon: Icons.fitness_center,
-                        values: checkIns
-                            .map((item) => item.quadStrengthSymmetry)
-                            .toList()
-                            .reversed
-                            .toList(),
-                        maxValue: 100,
-                        emptyValue: 0,
-                        targetText: 'Target: 90%+ symmetry for return drills',
-                        color: AppTheme.mintGreen,
-                      ),
-                      const SizedBox(height: 10),
-                      _TrendCard(
-                        title: 'Balance & Hop Trend',
-                        icon: Icons.balance,
-                        values: checkIns
-                            .map(
-                              (item) =>
-                                  ((item.balanceSymmetry +
-                                              item.hopTestSymmetry) /
-                                          2)
-                                      .round(),
-                            )
-                            .toList()
-                            .reversed
-                            .toList(),
-                        maxValue: 100,
-                        emptyValue: 0,
-                        targetText: 'Target: 90%+ symmetry',
-                        color: AppTheme.teal,
-                      ),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      SectionHeader(title: 'Milestones'),
-                      const SizedBox(height: 10),
-                      if (checkIns.isEmpty)
-                        const _EmptyMilestones()
-                      else
-                        ...checkIns.map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _MilestoneTile(checkIn: item),
-                          ),
-                        ),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      SectionHeader(title: 'Reports'),
-                      const SizedBox(height: 10),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(
-                            AppConstants.cardPadding,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Weekly Report',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${appState.sessionLogs.length} exercise logs and ${checkIns.length} milestone check-ins recorded.',
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                'Monthly Report',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'PDF export and clinician sharing are ready to add on top of this local history model.',
-                              ),
-                            ],
-                          ),
+              );
+              if (!wide) {
+                return Column(
+                  children: [effort, const SizedBox(height: 12), feedback],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: effort),
+                  const SizedBox(width: 12),
+                  Expanded(child: feedback),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Strength & balance tests'),
+          const SizedBox(height: 10),
+          if (snapshot.symmetrySeries.isEmpty)
+            EmptyStateCard(
+              icon: Icons.straighten,
+              title: 'No measurements yet',
+              body:
+                  'Strength, balance, and hop symmetry measured by your PT will be '
+                  'charted here. Add them at your next reassessment.',
+              actionLabel: 'Start reassessment',
+              onAction: () => context.push(AppRoutes.reassess),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 720
+                    ? 3
+                    : constraints.maxWidth >= 420
+                    ? 2
+                    : 1;
+                final width =
+                    (constraints.maxWidth - (columns - 1) * 12) / columns;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final entry in snapshot.symmetrySeries.entries)
+                      SizedBox(
+                        width: width,
+                        child: MetricSparkTile(
+                          title: '${entry.key} symmetry',
+                          points: [
+                            for (final point in entry.value)
+                              ChartPoint(point.date, point.value),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Assessments'),
+          const SizedBox(height: 10),
+          _AssessmentHistory(state: appState),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Recent workouts'),
+          const SizedBox(height: 10),
+          if (snapshot.recentWorkouts.isEmpty)
+            EmptyStateCard(
+              icon: Icons.sports_gymnastics,
+              title: 'No workouts in this period',
+              body:
+                  'Finished workouts appear here with sets, pain, and effort.',
+              actionLabel: 'Go to workout',
+              onAction: () => ref
+                  .read(appControllerProvider.notifier)
+                  .selectTab(AppTab.workout),
+            )
+          else
+            Card(
+              child: Column(
+                children: [
+                  for (final log in snapshot.recentWorkouts)
+                    ListTile(
+                      leading: CircleAvatar(
+                        child: Text('${(log.completionRate * 100).round()}%'),
+                      ),
+                      title: Text(
+                        '${log.sessionName} · ${formatDate(log.completedAt)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${log.completedSets}/${log.plannedSets} sets · '
+                        '${log.exercisesCompleted} exercises · pain ${log.painAfter}/10 · '
+                        'effort ${log.effort}/10',
+                      ),
+                    ),
+                ],
               ),
             ),
-          ),
-        );
-      },
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (error, stack) => Scaffold(
-        body: Center(child: Text('Unable to load progress: $error')),
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Check-ins'),
+          const SizedBox(height: 10),
+          _CheckIns(state: appState),
+        ],
       ),
     );
   }
 
-  Future<void> _showCheckInSheet(
-    BuildContext context,
-    WidgetRef ref,
-    Assessment assessment,
-    MilestoneCheckIn? latest,
-  ) async {
+  String _seriesSummary(String name, List<TrendPoint> points, String suffix) {
+    if (points.isEmpty) return '$name: no data';
+    final first = points.first;
+    final last = points.last;
+    return '$name: ${points.length} readings, from ${first.value.round()}$suffix '
+        'on ${shortDate(first.date)} to ${last.value.round()}$suffix on ${shortDate(last.date)}';
+  }
+
+  Future<void> _showCheckInSheet(BuildContext context, AppState state) async {
     final checkIn = await showModalBottomSheet<MilestoneCheckIn>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) =>
-          _MilestoneCheckInSheet(assessment: assessment, latest: latest),
+      showDragHandle: true,
+      builder: (context) => _MilestoneCheckInSheet(
+        assessment: state.assessment!,
+        latest: state.latestMilestone,
+      ),
     );
+    if (checkIn == null || !context.mounted) return;
 
-    if (checkIn != null) {
-      HapticFeedback.mediumImpact();
-      await ref
+    HapticFeedback.mediumImpact();
+    try {
+      final update = await ref
           .read(appControllerProvider.notifier)
           .addMilestoneCheckIn(checkIn);
       if (!context.mounted) return;
+      final message = update == null
+          ? 'Check-in saved.'
+          : update.isNewVersion
+          ? 'Check-in saved. Plan updated to version ${update.plan.version}'
+                '${update.phaseChanged ? ' (${update.plan.phase.label})' : ''}: '
+                '${update.diff.summary}'
+          : 'Check-in saved. Your plan still fits.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text(
-            'Check-in saved. Your phase and session plan were recalculated.',
-          ),
+          content: Text(message),
           action: SnackBarAction(
-            label: 'Session',
+            label: 'View plan',
             onPressed: () =>
-                ref.read(appControllerProvider.notifier).updateSelectedIndex(1),
+                ref.read(appControllerProvider.notifier).selectTab(AppTab.plan),
           ),
         ),
       );
+    } catch (_) {
+      if (context.mounted) showSaveError(context);
     }
   }
 }
 
-class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.onCheckIn});
+class _VerdictCard extends StatelessWidget {
+  const _VerdictCard({required this.snapshot});
 
-  final VoidCallback onCheckIn;
+  final ProgressSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Progress',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Milestones recalculate your phase every 2-4 weeks.',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-    final button = FilledButton.icon(
-      onPressed: onCheckIn,
-      icon: const Icon(Icons.add_chart),
-      label: const Text('Check-in'),
-    );
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, color) = switch (snapshot.verdict) {
+      ProgressVerdict.improving => (Icons.trending_up, AppTheme.teal),
+      ProgressVerdict.steady => (Icons.trending_flat, AppTheme.softBlue),
+      ProgressVerdict.needsAttention => (
+        Icons.warning_amber_rounded,
+        AppTheme.amber,
+      ),
+      ProgressVerdict.gettingStarted => (
+        Icons.rocket_launch_outlined,
+        scheme.primary,
+      ),
+    };
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 520) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              title,
-              const SizedBox(height: 12),
-              SizedBox(width: double.infinity, child: button),
-            ],
-          );
-        }
-
-        return Row(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: title),
-            const SizedBox(width: 12),
-            button,
+            Row(
+              children: [
+                Icon(icon, color: color, size: 28),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    snapshot.verdict.label,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (snapshot.insights.isEmpty)
+              Text(
+                'Complete a few workouts and a reassessment to see how you are '
+                'trending. Insights compare your recent results with earlier ones.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            for (final insight in snapshot.insights)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      switch (insight.trend) {
+                        InsightTrend.improving => Icons.arrow_upward,
+                        InsightTrend.declining => Icons.arrow_downward,
+                        InsightTrend.steady => Icons.remove,
+                        InsightTrend.info => Icons.info_outline,
+                      },
+                      size: 18,
+                      color: switch (insight.trend) {
+                        InsightTrend.improving => ChartColors.goodText(context),
+                        InsightTrend.declining => ChartColors.criticalText(
+                          context,
+                        ),
+                        _ => scheme.onSurfaceVariant,
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${insight.title}. ',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            TextSpan(text: insight.detail),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
-class _TrendCard extends StatelessWidget {
-  const _TrendCard({
-    required this.title,
-    required this.icon,
-    required this.values,
-    required this.maxValue,
-    required this.emptyValue,
-    required this.targetText,
-    required this.color,
-  });
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({required this.snapshot});
 
-  final String title;
-  final IconData icon;
-  final List<int> values;
-  final int maxValue;
-  final int emptyValue;
-  final String targetText;
-  final Color color;
+  final ProgressSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
-    final displayValues = values.isEmpty
-        ? [emptyValue]
-        : values.take(8).toList();
+    final adherence = snapshot.adherence;
+    final pain = snapshot.averagePainAfter;
+    final effort = snapshot.averageEffort;
+    final completion = snapshot.setCompletion;
 
+    return GridView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
+        mainAxisExtent: 148,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+      ),
+      children: [
+        MetricCard(
+          title: 'Workouts',
+          value: '${snapshot.workouts}',
+          subtitle: 'of ${snapshot.plannedSessions} planned',
+          icon: Icons.task_alt,
+          color: AppTheme.teal,
+        ),
+        MetricCard(
+          title: 'Consistency',
+          value: adherence == null ? '-' : '${(adherence * 100).round()}%',
+          subtitle: adherence == null
+              ? 'after your first week'
+              : adherence >= 0.75
+              ? 'on track'
+              : 'below target',
+          icon: Icons.event_available,
+          color: adherence != null && adherence >= 0.75
+              ? AppTheme.teal
+              : AppTheme.amber,
+        ),
+        MetricCard(
+          title: 'Streak',
+          value: '${snapshot.streakWeeks} wk',
+          subtitle: 'weeks meeting target',
+          icon: Icons.local_fire_department_outlined,
+        ),
+        MetricCard(
+          title: 'Pain after',
+          value: pain == null ? '-' : '${pain.toStringAsFixed(1)}/10',
+          subtitle: pain == null
+              ? 'no sessions yet'
+              : pain <= 2
+              ? 'quiet-knee range'
+              : 'above target',
+          icon: Icons.show_chart,
+          color: pain == null || pain <= 2 ? AppTheme.teal : AppTheme.amber,
+        ),
+        MetricCard(
+          title: 'Effort',
+          value: effort == null ? '-' : '${effort.toStringAsFixed(1)}/10',
+          subtitle: 'average RPE',
+          icon: Icons.speed,
+          color: AppTheme.softBlue,
+        ),
+        MetricCard(
+          title: 'Sets done',
+          value: completion == null ? '-' : '${(completion * 100).round()}%',
+          subtitle: '${snapshot.setsCompleted} of ${snapshot.setsPlanned} sets',
+          icon: Icons.checklist,
+          color: AppTheme.mintGreen,
+        ),
+      ],
+    );
+  }
+}
+
+class _ChartCard extends StatelessWidget {
+  const _ChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.cardPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: color),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 6),
-            Text(targetText, style: Theme.of(context).textTheme.labelSmall),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 70,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: displayValues.map((value) {
-                  final percent = maxValue == 0
-                      ? 0.0
-                      : (value / maxValue).clamp(0.0, 1.0);
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: TweenAnimationBuilder<double>(
-                        duration: const Duration(milliseconds: 520),
-                        curve: Curves.easeOutCubic,
-                        tween: Tween(begin: 0, end: percent),
-                        builder: (context, animated, child) {
-                          return FractionallySizedBox(
-                            heightFactor: animated,
-                            alignment: Alignment.bottomCenter,
-                            child: Container(
-                              constraints: const BoxConstraints(minHeight: 8),
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.78),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  );
-                }).toList(),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: 14),
+            child,
           ],
         ),
       ),
+    );
+  }
+}
+
+class _NoData extends StatelessWidget {
+  const _NoData({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+class _AssessmentHistory extends StatelessWidget {
+  const _AssessmentHistory({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final records = state.assessmentHistory.reversed.toList();
+    if (records.isEmpty) {
+      return const EmptyStateCard(
+        icon: Icons.fact_check_outlined,
+        title: 'No assessments saved',
+        body: 'Your assessments will be listed here.',
+      );
+    }
+    return Card(
+      child: Column(
+        children: [
+          for (final record in records)
+            ListTile(
+              leading: const Icon(Icons.fact_check_outlined),
+              title: Text(
+                '${record.kind.label} · ${record.phase.shortLabel}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                '${formatDate(record.createdAt)} · pain ${record.assessment.pain}/10 · '
+                'week ${_weekAt(record)}',
+              ),
+              trailing: state.recordBefore(record) == null
+                  ? null
+                  : TextButton(
+                      onPressed: () =>
+                          context.push(AppRoutes.resultsFor(record.id)),
+                      child: const Text('Compare'),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  int _weekAt(AssessmentRecord record) {
+    final days = record.createdAt
+        .difference(record.assessment.surgeryDate)
+        .inDays;
+    return days <= 0 ? 0 : days ~/ 7;
+  }
+}
+
+class _CheckIns extends StatelessWidget {
+  const _CheckIns({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final checkIns = [...state.activeMilestoneCheckIns]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (checkIns.isEmpty) {
+      return const EmptyStateCard(
+        icon: Icons.add_chart,
+        title: 'No check-ins since your last assessment',
+        body:
+            'Use Quick check-in between reassessments to log symptoms or new '
+            'measurements. Your plan updates if anything changes.',
+      );
+    }
+    return Column(
+      children: [
+        for (final item in checkIns)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _MilestoneTile(checkIn: item),
+          ),
+      ],
     );
   }
 }
@@ -423,62 +677,49 @@ class _MilestoneTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String measured(int? value) =>
+        value == null || value == 0 ? 'Not measured' : '$value%';
     return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.fact_check_outlined),
-        title: Text(
-          _formatDate(checkIn.createdAt),
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Text(
-          'Pain ${checkIn.pain}/10 - ${checkIn.swelling.label} swelling - confidence ${checkIn.confidence}/10',
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          _row('Walking', checkIn.walkingQuality.label),
-          if (checkIn.weightBearing != null)
-            _row('Weight bearing', checkIn.weightBearing!.label),
-          _row('Running tolerance', checkIn.canRun ? 'Yes' : 'No'),
-          _row(
-            'ROM',
-            '${checkIn.hasFullExtension ? 'Full extension' : 'Extension limited'}, ${checkIn.hasFunctionalFlexion ? 'functional flexion' : 'flexion limited'}',
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: const Icon(Icons.fact_check_outlined),
+          title: Text(
+            formatDate(checkIn.createdAt),
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
-          _row('Quad symmetry', '${checkIn.quadStrengthSymmetry}%'),
-          if (checkIn.hamstringStrengthSymmetry != null)
-            _row('Hamstring symmetry', '${checkIn.hamstringStrengthSymmetry}%'),
-          if (checkIn.hipStrengthSymmetry != null)
-            _row('Hip/glute symmetry', '${checkIn.hipStrengthSymmetry}%'),
-          _row('Hop symmetry', '${checkIn.hopTestSymmetry}%'),
-          _row('Balance symmetry', '${checkIn.balanceSymmetry}%'),
-          if (checkIn.painFreeLoadingActivities != null)
-            _row(
-              'Pain-free loading',
-              checkIn.painFreeLoadingActivities!
-                  ? 'Confirmed'
-                  : 'Not confirmed',
-            ),
-          if (checkIn.completedJogRunProgram != null)
-            _row(
-              'Walk/jog progression',
-              checkIn.completedJogRunProgram! ? 'Completed' : 'Not completed',
-            ),
-          if (checkIn.ptClearanceForRunning != null)
-            _row(
-              'PT running clearance',
-              checkIn.ptClearanceForRunning! ? 'Recorded' : 'Not recorded',
-            ),
-          _row(
-            'PT sport clearance',
-            checkIn.ptClearanceForSport ? 'Recorded' : 'Not recorded',
+          subtitle: Text(
+            'Pain ${checkIn.pain}/10 · ${checkIn.swelling.label} swelling · '
+            'confidence ${checkIn.confidence}/10',
           ),
-          if (checkIn.physicianClearanceForSport != null)
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
+            _row('Walking', checkIn.walkingQuality.label),
+            if (checkIn.weightBearing != null)
+              _row('Weight bearing', checkIn.weightBearing!.label),
+            _row('Running tolerance', checkIn.canRun ? 'Yes' : 'No'),
             _row(
-              'Physician clearance',
-              checkIn.physicianClearanceForSport! ? 'Recorded' : 'Not recorded',
+              'Range of motion',
+              '${checkIn.hasFullExtension ? 'Full extension' : 'Extension limited'}, '
+                  '${checkIn.hasFunctionalFlexion ? 'functional flexion' : 'flexion limited'}',
             ),
-          if (checkIn.notes.trim().isNotEmpty)
-            _row('Notes', checkIn.notes.trim()),
-        ],
+            _row('Quad symmetry', measured(checkIn.quadStrengthSymmetry)),
+            _row(
+              'Hamstring symmetry',
+              measured(checkIn.hamstringStrengthSymmetry),
+            ),
+            _row('Hip/glute symmetry', measured(checkIn.hipStrengthSymmetry)),
+            _row('Hop symmetry', measured(checkIn.hopTestSymmetry)),
+            _row('Balance symmetry', measured(checkIn.balanceSymmetry)),
+            if (checkIn.ptClearanceForRunning != null)
+              _row(
+                'PT running clearance',
+                checkIn.ptClearanceForRunning! ? 'Recorded' : 'Not recorded',
+              ),
+            if (checkIn.notes.trim().isNotEmpty)
+              _row('Notes', checkIn.notes.trim()),
+          ],
+        ),
       ),
     );
   }
@@ -489,7 +730,7 @@ class _MilestoneTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 132, child: Text(label)),
+          SizedBox(width: 140, child: Text(label)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -499,35 +740,6 @@ class _MilestoneTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) => '${date.day}/${date.month}/${date.year}';
-}
-
-class _EmptyMilestones extends StatelessWidget {
-  const _EmptyMilestones();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppConstants.cardPadding),
-        child: Row(
-          children: [
-            Icon(
-              Icons.add_chart,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'No milestone check-ins yet. Add one to track pain, swelling, ROM, confidence, strength, hop, and balance symmetry.',
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -547,6 +759,7 @@ class _MilestoneCheckInSheet extends StatefulWidget {
 }
 
 class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
+  late final readiness = widget.assessment.protocolReadiness;
   late int pain = widget.latest?.pain ?? widget.assessment.pain;
   late Swelling swelling =
       widget.latest?.swelling ?? widget.assessment.swelling;
@@ -559,46 +772,41 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
       widget.latest?.hasFullExtension ?? widget.assessment.canStraighten;
   late bool hasFunctionalFlexion =
       widget.latest?.hasFunctionalFlexion ?? widget.assessment.canBend;
-  late int confidence = widget.latest?.confidence ?? 5;
-  late int quadStrengthSymmetry = widget.latest?.quadStrengthSymmetry ?? 0;
+  late int confidence =
+      widget.latest?.confidence ?? widget.assessment.confidence;
+  late int quadStrengthSymmetry =
+      widget.latest?.quadStrengthSymmetry ?? readiness.quadStrengthSymmetry;
   late int hamstringStrengthSymmetry =
       widget.latest?.hamstringStrengthSymmetry ??
-      widget.assessment.protocolReadiness.hamstringStrengthSymmetry;
+      readiness.hamstringStrengthSymmetry;
   late int hipStrengthSymmetry =
-      widget.latest?.hipStrengthSymmetry ??
-      widget.assessment.protocolReadiness.gluteStrengthSymmetry;
-  late int hopTestSymmetry = widget.latest?.hopTestSymmetry ?? 0;
-  late int balanceSymmetry = widget.latest?.balanceSymmetry ?? 0;
+      widget.latest?.hipStrengthSymmetry ?? readiness.gluteStrengthSymmetry;
+  late int hopTestSymmetry =
+      widget.latest?.hopTestSymmetry ?? readiness.hopTestSymmetry;
+  late int balanceSymmetry =
+      widget.latest?.balanceSymmetry ?? readiness.balanceSymmetry;
   late int koosSportsScore =
-      widget.latest?.koosSportsScore ??
-      widget.assessment.protocolReadiness.koosSportsScore;
-  late int ikdcScore =
-      widget.latest?.ikdcScore ?? widget.assessment.protocolReadiness.ikdcScore;
-  late int aclRsiScore =
-      widget.latest?.aclRsiScore ??
-      widget.assessment.protocolReadiness.aclRsiScore;
+      widget.latest?.koosSportsScore ?? readiness.koosSportsScore;
+  late int ikdcScore = widget.latest?.ikdcScore ?? readiness.ikdcScore;
+  late int aclRsiScore = widget.latest?.aclRsiScore ?? readiness.aclRsiScore;
   late bool painFreeLoadingActivities =
       widget.latest?.painFreeLoadingActivities ??
-      widget.assessment.protocolReadiness.painFreeLoadingActivities;
+      readiness.painFreeLoadingActivities;
   late bool painFreeRepeatedSingleLegHops =
       widget.latest?.painFreeRepeatedSingleLegHops ??
-      widget.assessment.protocolReadiness.painFreeRepeatedSingleLegHops;
+      readiness.painFreeRepeatedSingleLegHops;
   late bool canPerformControlledSingleLegSquat =
       widget.latest?.canPerformControlledSingleLegSquat ??
-      widget.assessment.protocolReadiness.singleLegSquatTenReps;
+      readiness.singleLegSquatTenReps;
   late bool goodLandingControl =
-      widget.latest?.goodLandingControl ??
-      widget.assessment.protocolReadiness.dropJumpGoodControl;
+      widget.latest?.goodLandingControl ?? readiness.dropJumpGoodControl;
   late bool completedJogRunProgram =
-      widget.latest?.completedJogRunProgram ??
-      widget.assessment.protocolReadiness.completedJogRunProgram;
+      widget.latest?.completedJogRunProgram ?? readiness.completedJogRunProgram;
   late bool ptClearanceForRunning =
-      widget.latest?.ptClearanceForRunning ??
-      widget.assessment.protocolReadiness.ptClearedForRunning;
+      widget.latest?.ptClearanceForRunning ?? readiness.ptClearedForRunning;
   late bool ptClearanceForSport = widget.latest?.ptClearanceForSport ?? false;
   late bool physicianClearanceForSport =
-      widget.latest?.physicianClearanceForSport ??
-      widget.assessment.protocolReadiness.mdClearedForSport;
+      widget.latest?.physicianClearanceForSport ?? readiness.mdClearedForSport;
   final notesController = TextEditingController();
 
   @override
@@ -609,346 +817,255 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 20),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(999),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            children: [
+              Text(
+                'Quick check-in',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Milestone Check-in',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Enter values measured or confirmed by your rehabilitation team.',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Do not perform a new hop, jump, landing, or running test just to complete this check-in.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              const SizedBox(height: 6),
+              Text(
+                'Log how the knee is doing between reassessments. Enter values '
+                'measured or confirmed by your rehab team. Do not perform a new '
+                'hop, jump, or running test just to complete this.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            _slider(
-              'Pain',
-              pain,
-              0,
-              10,
-              (value) => setState(() => pain = value),
-            ),
-            _choice<Swelling>(
-              'Swelling',
-              swelling,
-              Swelling.values,
-              (value) => setState(() => swelling = value),
-              (value) => value.label,
-            ),
-            _choice<WalkingQuality>(
-              'Walking',
-              walkingQuality,
-              WalkingQuality.values,
-              (value) => setState(() => walkingQuality = value),
-              (value) => value.label,
-            ),
-            _choice<WeightBearing>(
-              'Weight bearing',
-              weightBearing,
-              WeightBearing.values,
-              (value) => setState(() => weightBearing = value),
-              (value) => value.label,
-            ),
-            _switch(
-              'Can run without symptoms?',
-              canRun,
-              (value) => setState(() => canRun = value),
-            ),
-            _switch(
-              'Full knee extension?',
-              hasFullExtension,
-              (value) => setState(() => hasFullExtension = value),
-            ),
-            _switch(
-              'Functional knee flexion?',
-              hasFunctionalFlexion,
-              (value) => setState(() => hasFunctionalFlexion = value),
-            ),
-            _slider(
-              'Confidence',
-              confidence,
-              0,
-              10,
-              (value) => setState(() => confidence = value),
-            ),
-            _slider(
-              'Quad strength symmetry',
-              quadStrengthSymmetry,
-              0,
-              100,
-              (value) => setState(() => quadStrengthSymmetry = value),
-              suffix: '%',
-            ),
-            _slider(
-              'Hamstring strength symmetry',
-              hamstringStrengthSymmetry,
-              0,
-              100,
-              (value) => setState(() => hamstringStrengthSymmetry = value),
-              suffix: '%',
-            ),
-            _slider(
-              'Hip/glute strength symmetry',
-              hipStrengthSymmetry,
-              0,
-              100,
-              (value) => setState(() => hipStrengthSymmetry = value),
-              suffix: '%',
-            ),
-            _slider(
-              'Hop test symmetry',
-              hopTestSymmetry,
-              0,
-              100,
-              (value) => setState(() => hopTestSymmetry = value),
-              suffix: '%',
-            ),
-            _slider(
-              'Balance symmetry',
-              balanceSymmetry,
-              0,
-              100,
-              (value) => setState(() => balanceSymmetry = value),
-              suffix: '%',
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Movement readiness',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            _switch(
-              'Pain-free loading activities confirmed?',
-              painFreeLoadingActivities,
-              (value) => setState(() => painFreeLoadingActivities = value),
-            ),
-            _switch(
-              'PT confirmed 10 controlled single-leg squats?',
-              canPerformControlledSingleLegSquat,
-              (value) =>
-                  setState(() => canPerformControlledSingleLegSquat = value),
-            ),
-            _switch(
-              'PT confirmed controlled landing mechanics?',
-              goodLandingControl,
-              (value) => setState(() => goodLandingControl = value),
-            ),
-            _switch(
-              'Pain-free repeated single-leg hops confirmed?',
-              painFreeRepeatedSingleLegHops,
-              (value) => setState(() => painFreeRepeatedSingleLegHops = value),
-            ),
-            _switch(
-              'Completed a walk/jog progression without symptoms?',
-              completedJogRunProgram,
-              (value) => setState(() => completedJogRunProgram = value),
-            ),
-            _switch(
-              'PT clearance to start or progress running?',
-              ptClearanceForRunning,
-              (value) => setState(() => ptClearanceForRunning = value),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Return-to-sport outcomes',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            _slider(
-              'KOOS-Sports score',
-              koosSportsScore,
-              0,
-              100,
-              (value) => setState(() => koosSportsScore = value),
-              suffix: '%',
-            ),
-            _slider(
-              'IKDC score',
-              ikdcScore,
-              0,
-              100,
-              (value) => setState(() => ikdcScore = value),
-              suffix: '%',
-            ),
-            _slider(
-              'ACL-RSI score',
-              aclRsiScore,
-              0,
-              100,
-              (value) => setState(() => aclRsiScore = value),
-              suffix: '%',
-            ),
-            _switch(
-              'PT clearance for sport drills?',
-              ptClearanceForSport,
-              (value) => setState(() => ptClearanceForSport = value),
-            ),
-            _switch(
-              'Physician clearance for return to sport?',
-              physicianClearanceForSport,
-              (value) => setState(() => physicianClearanceForSport = value),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: notesController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                hintText: 'Optional notes from your check-in',
+              QuestionSection(
+                title: 'Symptoms',
+                children: [
+                  ScaleSliderCard(
+                    title: 'Pain',
+                    value: pain,
+                    lowLabel: '0 = none',
+                    highLabel: '10 = worst',
+                    onChanged: (value) => setState(() => pain = value),
+                  ),
+                  ChoiceCard<Swelling>(
+                    title: 'Swelling',
+                    value: swelling,
+                    options: Swelling.values,
+                    labelOf: (value) => value.label,
+                    onChanged: (value) => setState(() => swelling = value),
+                  ),
+                  ChoiceCard<WalkingQuality>(
+                    title: 'Walking',
+                    value: walkingQuality,
+                    options: WalkingQuality.values,
+                    labelOf: (value) => value.label,
+                    onChanged: (value) =>
+                        setState(() => walkingQuality = value),
+                  ),
+                  ChoiceCard<WeightBearing>(
+                    title: 'Weight bearing',
+                    value: weightBearing,
+                    options: WeightBearing.values,
+                    labelOf: (value) => value.label,
+                    onChanged: (value) => setState(() => weightBearing = value),
+                  ),
+                  YesNoCard(
+                    title: 'Full knee extension?',
+                    value: hasFullExtension,
+                    onChanged: (value) =>
+                        setState(() => hasFullExtension = value),
+                  ),
+                  YesNoCard(
+                    title: 'Functional knee flexion?',
+                    value: hasFunctionalFlexion,
+                    onChanged: (value) =>
+                        setState(() => hasFunctionalFlexion = value),
+                  ),
+                  ScaleSliderCard(
+                    title: 'Confidence',
+                    value: confidence,
+                    lowLabel: '0 = none',
+                    highLabel: '10 = complete',
+                    onChanged: (value) => setState(() => confidence = value),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop(
-                    MilestoneCheckIn(
-                      id: DateTime.now().microsecondsSinceEpoch.toString(),
-                      createdAt: DateTime.now(),
-                      pain: pain,
-                      swelling: swelling,
-                      walkingQuality: walkingQuality,
-                      canRun: canRun,
-                      weightBearing: weightBearing,
-                      hasFullExtension: hasFullExtension,
-                      hasFunctionalFlexion: hasFunctionalFlexion,
-                      confidence: confidence,
-                      quadStrengthSymmetry: quadStrengthSymmetry,
-                      hamstringStrengthSymmetry: hamstringStrengthSymmetry,
-                      hipStrengthSymmetry: hipStrengthSymmetry,
-                      hopTestSymmetry: hopTestSymmetry,
-                      balanceSymmetry: balanceSymmetry,
-                      koosSportsScore: koosSportsScore,
-                      ikdcScore: ikdcScore,
-                      aclRsiScore: aclRsiScore,
-                      painFreeLoadingActivities: painFreeLoadingActivities,
-                      painFreeRepeatedSingleLegHops:
-                          painFreeRepeatedSingleLegHops,
-                      canPerformControlledSingleLegSquat:
-                          canPerformControlledSingleLegSquat,
-                      goodLandingControl: goodLandingControl,
-                      completedJogRunProgram: completedJogRunProgram,
-                      ptClearanceForRunning: ptClearanceForRunning,
-                      ptClearanceForSport: ptClearanceForSport,
-                      physicianClearanceForSport: physicianClearanceForSport,
-                      notes: notesController.text,
+              QuestionSection(
+                title: 'Measurements',
+                subtitle: 'Leave "Not measured" unless your PT tested it.',
+                children: [
+                  MeasuredScoreCard(
+                    title: 'Quad strength symmetry',
+                    value: quadStrengthSymmetry,
+                    onChanged: (value) =>
+                        setState(() => quadStrengthSymmetry = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'Hamstring strength symmetry',
+                    value: hamstringStrengthSymmetry,
+                    onChanged: (value) =>
+                        setState(() => hamstringStrengthSymmetry = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'Hip/glute strength symmetry',
+                    value: hipStrengthSymmetry,
+                    onChanged: (value) =>
+                        setState(() => hipStrengthSymmetry = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'Balance symmetry',
+                    value: balanceSymmetry,
+                    onChanged: (value) =>
+                        setState(() => balanceSymmetry = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'Hop test symmetry',
+                    value: hopTestSymmetry,
+                    onChanged: (value) =>
+                        setState(() => hopTestSymmetry = value),
+                  ),
+                ],
+              ),
+              QuestionSection(
+                title: 'Movement readiness',
+                children: [
+                  YesNoCard(
+                    title: 'Pain-free loading activities?',
+                    value: painFreeLoadingActivities,
+                    onChanged: (value) =>
+                        setState(() => painFreeLoadingActivities = value),
+                  ),
+                  YesNoCard(
+                    title: 'PT confirmed 10 controlled single-leg squats?',
+                    value: canPerformControlledSingleLegSquat,
+                    onChanged: (value) => setState(
+                      () => canPerformControlledSingleLegSquat = value,
                     ),
-                  );
-                },
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Save Check-in'),
+                  ),
+                  YesNoCard(
+                    title: 'PT confirmed controlled landing?',
+                    value: goodLandingControl,
+                    onChanged: (value) =>
+                        setState(() => goodLandingControl = value),
+                  ),
+                  YesNoCard(
+                    title: 'Pain-free repeated single-leg hops?',
+                    value: painFreeRepeatedSingleLegHops,
+                    onChanged: (value) =>
+                        setState(() => painFreeRepeatedSingleLegHops = value),
+                  ),
+                  YesNoCard(
+                    title: 'Can run without symptoms?',
+                    value: canRun,
+                    onChanged: (value) => setState(() => canRun = value),
+                  ),
+                  YesNoCard(
+                    title: 'Completed a walk/jog progression?',
+                    value: completedJogRunProgram,
+                    onChanged: (value) =>
+                        setState(() => completedJogRunProgram = value),
+                  ),
+                  YesNoCard(
+                    title: 'PT clearance to start or progress running?',
+                    value: ptClearanceForRunning,
+                    onChanged: (value) =>
+                        setState(() => ptClearanceForRunning = value),
+                  ),
+                ],
               ),
-            ),
-          ],
+              QuestionSection(
+                title: 'Return-to-sport outcomes',
+                children: [
+                  MeasuredScoreCard(
+                    title: 'KOOS-Sports score',
+                    suffix: '',
+                    value: koosSportsScore,
+                    onChanged: (value) =>
+                        setState(() => koosSportsScore = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'IKDC score',
+                    suffix: '',
+                    value: ikdcScore,
+                    onChanged: (value) => setState(() => ikdcScore = value),
+                  ),
+                  MeasuredScoreCard(
+                    title: 'ACL-RSI score',
+                    suffix: '',
+                    value: aclRsiScore,
+                    onChanged: (value) => setState(() => aclRsiScore = value),
+                  ),
+                  YesNoCard(
+                    title: 'PT clearance for sport drills?',
+                    value: ptClearanceForSport,
+                    onChanged: (value) =>
+                        setState(() => ptClearanceForSport = value),
+                  ),
+                  YesNoCard(
+                    title: 'Physician clearance for return to sport?',
+                    value: physicianClearanceForSport,
+                    onChanged: (value) =>
+                        setState(() => physicianClearanceForSport = value),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Notes',
+                  hintText: 'Optional notes from your check-in',
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Save check-in'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _slider(
-    String label,
-    int value,
-    int min,
-    int max,
-    ValueChanged<int> onChanged, {
-    String suffix = '',
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-              Text('$value$suffix'),
-            ],
-          ),
-          Slider(
-            value: value.toDouble(),
-            min: min.toDouble(),
-            max: max.toDouble(),
-            divisions: max - min,
-            label: '$value$suffix',
-            onChanged: (next) => onChanged(next.round()),
-          ),
-        ],
+  void _save() {
+    int? optional(int value) => value > 0 ? value : null;
+    Navigator.of(context).pop(
+      MilestoneCheckIn(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        createdAt: DateTime.now(),
+        pain: pain,
+        swelling: swelling,
+        walkingQuality: walkingQuality,
+        canRun: canRun,
+        weightBearing: weightBearing,
+        hasFullExtension: hasFullExtension,
+        hasFunctionalFlexion: hasFunctionalFlexion,
+        confidence: confidence,
+        quadStrengthSymmetry: quadStrengthSymmetry,
+        hamstringStrengthSymmetry: optional(hamstringStrengthSymmetry),
+        hipStrengthSymmetry: optional(hipStrengthSymmetry),
+        hopTestSymmetry: hopTestSymmetry,
+        balanceSymmetry: balanceSymmetry,
+        koosSportsScore: optional(koosSportsScore),
+        ikdcScore: optional(ikdcScore),
+        aclRsiScore: optional(aclRsiScore),
+        painFreeLoadingActivities: painFreeLoadingActivities,
+        painFreeRepeatedSingleLegHops: painFreeRepeatedSingleLegHops,
+        canPerformControlledSingleLegSquat: canPerformControlledSingleLegSquat,
+        goodLandingControl: goodLandingControl,
+        completedJogRunProgram: completedJogRunProgram,
+        ptClearanceForRunning: ptClearanceForRunning,
+        ptClearanceForSport: ptClearanceForSport,
+        physicianClearanceForSport: physicianClearanceForSport,
+        notes: notesController.text,
       ),
-    );
-  }
-
-  Widget _choice<T>(
-    String title,
-    T value,
-    List<T> options,
-    ValueChanged<T> onChanged,
-    String Function(T value) labelBuilder,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: options.map((option) {
-              return ChoiceChip(
-                label: Text(labelBuilder(option)),
-                selected: option == value,
-                onSelected: (_) => onChanged(option),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _switch(String title, bool value, ValueChanged<bool> onChanged) {
-    return SwitchListTile.adaptive(
-      contentPadding: EdgeInsets.zero,
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      value: value,
-      onChanged: onChanged,
     );
   }
 }

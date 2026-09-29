@@ -31,31 +31,68 @@ Surgeon and physical therapist restrictions always take priority.
 
 ## Features
 
-- Guided onboarding assessment for surgery date, graft type, symptoms, range
-  of motion, walking, restrictions, and documented readiness measures.
-- Retakeable initial assessment. A retake starts a new active assessment
-  revision, so older milestone data cannot override the new result.
-- Criteria-based phase assignment:
-  - Protection & Motion
-  - Early Strengthening
-  - Advanced Strength
-  - Neuromuscular Control
-  - Return to Sport
-- Phase-aligned sessions that select only currently unlocked exercises from the
-  active phase.
-- Progressive exercise catalog covering motion, closed-chain strength,
-  unilateral control, posterior-chain work, landing mechanics, walk-jog,
-  deceleration, agility, hopping, and return-to-sport drills.
-- Same-goal alternative exercises for equipment availability or patient
-  preference, without bypassing eligibility rules.
-- Exercise feedback (`Too Hard`, `Just Right`, or `Too Easy`) with persisted
-  regression, maintenance, and progression recommendations.
-- Milestone check-ins for current symptoms, ROM, weight bearing, strength,
-  hop and balance symmetry, loading tolerance, running progression, outcomes,
-  and clinical clearances.
-- Dashboard, progress charts, recent feedback, phase blockers, exercise lock
-  reasons, clinical disclaimer banners, light/dark mode, and Android dynamic
-  color where available.
+### Adaptive cycle
+
+```text
+Assessment -> Personalized plan -> Logged sessions -> Reassessment -> Updated plan
+```
+
+- **Assessment** covers surgery date, graft, symptoms, range of motion,
+  walking, warning signs, confidence, protocol readiness (with "not measured"
+  handled explicitly), restrictions, and a training setup: goal, training days,
+  session length, and available equipment.
+- **Personalized plan.** Answers are analyzed into prioritized focus areas
+  (for example "Close the quadriceps gap: 65%, target 80%"). The plan picks
+  exercises for the criteria-based phase, the focus areas, the goal, and the
+  equipment, then doses them (sets, reps, holds, rest, effort, frequency),
+  splits them into Session A/B to fit the session length, and lays out a
+  weekly schedule. Every plan explains itself ("Why this plan") and lists what
+  is not included yet and why.
+- **Plan quality check.** Before a plan is shown, 14 checks verify it against
+  the assessment: unlock criteria and restrictions, graft precautions,
+  equipment, goal alignment, difficulty, duplicates, coverage of every focus
+  area, balance (knee-, hip-dominant, and control work), symptom-appropriate
+  progression, session length, realistic weekly load, answer consistency, and
+  clinical flags. Problems are repaired automatically (swap, trim, add, or
+  reschedule) and the report shows what passed, what was adjusted, and what
+  needs review.
+- **Feedback-driven dosing.** "Too easy", "Just right", and "Too hard" (plus
+  an optional pain rating) move each exercise between dose levels. Two
+  "Just right" sessions with low pain progress it; pain of 5/10 or "Too hard"
+  steps it back. At the top level, the next plan moves to a harder variation.
+- **Reassessment.** The app recommends a retest when progress is meaningful
+  (sessions logged, exercises progressed, low pain), when the plan reaches its
+  ceiling, on schedule, or urgently when symptoms rise. The retest compares
+  new and previous results, shows improvements, declines, remaining
+  weaknesses, and exactly how the plan changed.
+- **Quick check-ins** log symptoms or measurements between reassessments and
+  rebuild the plan only when something changes.
+
+### Exercises and alternatives
+
+- 59 exercises across five phases, each tagged with a training purpose (for
+  example knee extension range, quadriceps strength, landing mechanics) and
+  the equipment it needs beyond household basics.
+- Alternatives always share the exercise's purpose, stay within the current
+  phase and unlock criteria, and are labeled easier, similar, or harder, with
+  the reason they fit and what blocks unavailable options. They can be used for
+  one workout or saved to the plan.
+
+### Progress tracking
+
+- Workouts record sets completed, per-exercise feedback, pain after, effort,
+  and notes.
+- The Progress tab summarizes 7-day, 30-day, 90-day, or all-time periods:
+  consistency against the plan, streaks, average pain and effort, set
+  completion, weekly sessions, pain and effort trends, exercise feedback mix,
+  strength, balance, and hop symmetry over time, assessment history with
+  comparisons, and plain-language insights ("You are improving").
+
+### Also
+
+- Clinical disclaimer, phase blockers, graft education, light/dark mode,
+  Android dynamic color, responsive layouts (bottom navigation on phones,
+  navigation rail on wide screens), and data migration from earlier versions.
 
 ## Technology
 
@@ -86,11 +123,14 @@ lib/
     repositories/    Hive and Shared Preferences persistence
     exercise_catalog.dart
   domain/
-    models/          Typed assessment, milestone, exercise, and app state models
+    models/          Assessment, training profile, plan, workout, history,
+                     milestone, exercise, and app state models
+    services/        Plan generator and validator, focus analysis, progress
+                     analytics, reassessment advisor, comparisons, alternatives
   presentation/
     providers/       Riverpod controller and dependency injection
-    screens/         Onboarding, dashboard, session, progress, and about views
-    widgets/         Shared clinical, metric, timeline, and exercise components
+    screens/         Assessment, today, plan, workout, progress, results, about
+    widgets/         Charts, forms, exercise sheets, and shared components
 ```
 
 ## Getting Started
@@ -124,15 +164,19 @@ flutter analyze
 flutter test
 ```
 
-The current tests cover phase assignment, active assessment revisions,
-phase-aligned session construction, and alternative exercise safety.
+The tests cover phase assignment, assessment revisions, plan personalization
+(equipment, goals, deficits, symptoms, restrictions, graft precautions),
+plan validation and repair, progression rules, reassessment triggers,
+comparisons, progress analytics, exercise alternatives, catalog integrity,
+data migration, and a full widget-driven flow from assessment through
+workout, progress, and reassessment.
 
 ## Data and Privacy
 
 The app currently stores its state on-device only:
 
-- Hive stores the serialized application state, assessment revisions,
-  check-ins, session feedback, and exercise progression history.
+- Hive stores the serialized application state: assessment history, plan
+  versions, workouts, check-ins, session feedback, and exercise progression.
 - Shared Preferences stores lightweight settings such as theme mode and the
   selected navigation tab.
 
@@ -142,16 +186,16 @@ app storage may remove locally stored rehabilitation data.
 
 ## Rehabilitation Workflow
 
-1. Complete the onboarding assessment using current and clinician-confirmed
-   information.
-2. Review the assigned phase and its blockers on the dashboard.
-3. Complete a phase-aligned session. Locked exercises explain the missing
-   criteria instead of unlocking by time alone.
-4. Record exercise feedback so the next recommendation can adapt.
-5. Add a milestone check-in every two to four weeks, or whenever your clinical
-   status changes. Enter measured values or values confirmed by your care team.
-6. Retake the initial assessment when surgery details, restrictions, or the
-   baseline assessment need correction.
+1. Complete the assessment using current and clinician-confirmed information,
+   including your goal, schedule, and equipment.
+2. Review your plan: phase, focus areas, the reasoning, and the quality check.
+3. Train with the Workout tab. Mark sets, rate each exercise, and finish the
+   workout with pain and effort so doses can adapt.
+4. Follow your progress on the Progress tab.
+5. Reassess when the app suggests it (typically every 2-4 weeks, sooner when
+   you improve or symptoms rise). Review the comparison and your updated plan.
+6. Use "Correct Initial Assessment" (About tab) only to fix surgery details,
+   graft type, or restrictions that were entered wrongly.
 
 Never perform a new hop, jump, landing, or running test solely to fill out the
 app. Use results supplied or approved by your rehabilitation team.

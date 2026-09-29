@@ -1,5 +1,6 @@
 import 'package:acl_rehab/domain/models/assessment.dart';
 import 'package:acl_rehab/domain/models/milestone_check_in.dart';
+import 'package:acl_rehab/domain/models/training_profile.dart';
 
 enum ExerciseCategory {
   mobility,
@@ -11,6 +12,28 @@ enum ExerciseCategory {
 }
 
 enum DifficultyLevel { foundation, moderate, advanced, sport }
+
+/// The training goal an exercise serves. Alternatives must share a purpose so
+/// a swap keeps the same intent (for example, extension range of motion is
+/// never replaced by a flexion drill).
+enum TrainingPurpose {
+  kneeExtension,
+  kneeFlexion,
+  quadActivation,
+  circulation,
+  quadStrength,
+  singleLegStrength,
+  hipStability,
+  posteriorChain,
+  hamstringStrength,
+  calfStrength,
+  balance,
+  landing,
+  plyometric,
+  running,
+  changeOfDirection,
+  conditioning,
+}
 
 enum SessionBlock {
   mobility,
@@ -55,6 +78,82 @@ extension DifficultyLevelX on DifficultyLevel {
         return 'Sport';
     }
   }
+}
+
+extension TrainingPurposeX on TrainingPurpose {
+  String get label {
+    switch (this) {
+      case TrainingPurpose.kneeExtension:
+        return 'Knee extension range';
+      case TrainingPurpose.kneeFlexion:
+        return 'Knee flexion range';
+      case TrainingPurpose.quadActivation:
+        return 'Quadriceps activation';
+      case TrainingPurpose.circulation:
+        return 'Swelling & circulation';
+      case TrainingPurpose.quadStrength:
+        return 'Quadriceps strength';
+      case TrainingPurpose.singleLegStrength:
+        return 'Single-leg strength';
+      case TrainingPurpose.hipStability:
+        return 'Hip stability';
+      case TrainingPurpose.posteriorChain:
+        return 'Glutes & posterior chain';
+      case TrainingPurpose.hamstringStrength:
+        return 'Hamstring strength';
+      case TrainingPurpose.calfStrength:
+        return 'Calf & gait support';
+      case TrainingPurpose.balance:
+        return 'Balance & proprioception';
+      case TrainingPurpose.landing:
+        return 'Landing mechanics';
+      case TrainingPurpose.plyometric:
+        return 'Hopping & power';
+      case TrainingPurpose.running:
+        return 'Running tolerance';
+      case TrainingPurpose.changeOfDirection:
+        return 'Change of direction';
+      case TrainingPurpose.conditioning:
+        return 'Conditioning & warm-up';
+    }
+  }
+
+  /// Purposes that train closely related qualities. Used as a fallback when
+  /// no same-purpose alternative is available.
+  Set<TrainingPurpose> get related {
+    switch (this) {
+      case TrainingPurpose.quadStrength:
+        return const {TrainingPurpose.singleLegStrength};
+      case TrainingPurpose.singleLegStrength:
+        return const {TrainingPurpose.quadStrength};
+      case TrainingPurpose.posteriorChain:
+        return const {TrainingPurpose.hamstringStrength};
+      case TrainingPurpose.hamstringStrength:
+        return const {TrainingPurpose.posteriorChain};
+      case TrainingPurpose.landing:
+        return const {TrainingPurpose.plyometric};
+      case TrainingPurpose.plyometric:
+        return const {TrainingPurpose.landing};
+      case TrainingPurpose.quadActivation:
+        return const {TrainingPurpose.quadStrength};
+      default:
+        return const {};
+    }
+  }
+
+  bool get isHighImpact =>
+      this == TrainingPurpose.landing ||
+      this == TrainingPurpose.plyometric ||
+      this == TrainingPurpose.running ||
+      this == TrainingPurpose.changeOfDirection;
+
+  /// Motion, activation, and circulation work is dosed daily and is not
+  /// reduced when symptoms are elevated.
+  bool get isMotionOrActivation =>
+      this == TrainingPurpose.kneeExtension ||
+      this == TrainingPurpose.kneeFlexion ||
+      this == TrainingPurpose.quadActivation ||
+      this == TrainingPurpose.circulation;
 }
 
 extension SessionBlockX on SessionBlock {
@@ -312,6 +411,8 @@ class Exercise {
     required this.sessionBlock,
     required this.medicalNotes,
     required this.safetyWarnings,
+    required this.purpose,
+    this.requiredEquipment = const {},
     this.alternativeExerciseIds = const [],
   });
 
@@ -336,6 +437,22 @@ class Exercise {
   final String medicalNotes;
   final List<String> safetyWarnings;
   final List<String> alternativeExerciseIds;
+
+  /// The main training goal of this exercise.
+  final TrainingPurpose purpose;
+
+  /// Equipment needed beyond household basics.
+  final Set<EquipmentType> requiredEquipment;
+
+  bool get isHighImpact => purpose.isHighImpact;
+
+  bool get needsNoEquipment => requiredEquipment.isEmpty;
+
+  bool isAvailableWith(TrainingProfile profile) =>
+      profile.hasAll(requiredEquipment);
+
+  List<EquipmentType> missingEquipment(TrainingProfile profile) =>
+      requiredEquipment.where((item) => !profile.has(item)).toList();
 
   ExerciseUnlockStatus unlockStatus(
     Assessment assessment,
