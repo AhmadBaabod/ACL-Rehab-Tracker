@@ -8,6 +8,8 @@ import 'package:acl_rehab/domain/models/assessment_record.dart';
 import 'package:acl_rehab/domain/models/milestone_check_in.dart';
 import 'package:acl_rehab/domain/models/session_log.dart';
 import 'package:acl_rehab/domain/models/workout_log.dart';
+import 'package:acl_rehab/domain/models/exercise.dart';
+import 'package:acl_rehab/domain/services/limb_symmetry.dart';
 import 'package:acl_rehab/domain/services/progress_analytics.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/charts.dart';
@@ -42,6 +44,10 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       );
     }
     final snapshot = ProgressAnalytics.compute(appState, period);
+    final symmetrySuggestions = LimbSymmetryAnalyzer.suggestions(
+      appState,
+      DateTime.now(),
+    );
 
     return Scaffold(
       body: ResponsivePage(
@@ -57,7 +63,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 label: const Text('Reassess'),
               ),
               OutlinedButton.icon(
-                onPressed: () => _showCheckInSheet(context, appState),
+                onPressed: () => showCheckInSheet(context, ref, appState),
                 icon: const Icon(Icons.add_chart),
                 label: const Text('Quick check-in'),
               ),
@@ -65,6 +71,18 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           ),
           const SizedBox(height: 16),
           _VerdictCard(snapshot: snapshot),
+          if (symmetrySuggestions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            TrainingSymmetryCard(
+              suggestions: symmetrySuggestions,
+              onReview: () => showCheckInSheet(
+                context,
+                ref,
+                appState,
+                suggestions: symmetrySuggestions,
+              ),
+            ),
+          ],
           const SizedBox(height: AppConstants.sectionGap),
           SegmentedButton<ProgressPeriod>(
             showSelectedIcon: false,
@@ -350,47 +368,6 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     final last = points.last;
     return '$name: ${points.length} readings, from ${first.value.round()}$suffix '
         'on ${shortDate(first.date)} to ${last.value.round()}$suffix on ${shortDate(last.date)}';
-  }
-
-  Future<void> _showCheckInSheet(BuildContext context, AppState state) async {
-    final checkIn = await showModalBottomSheet<MilestoneCheckIn>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) => _MilestoneCheckInSheet(
-        assessment: state.assessment!,
-        latest: state.latestMilestone,
-      ),
-    );
-    if (checkIn == null || !context.mounted) return;
-
-    HapticFeedback.mediumImpact();
-    try {
-      final update = await ref
-          .read(appControllerProvider.notifier)
-          .addMilestoneCheckIn(checkIn);
-      if (!context.mounted) return;
-      final message = update == null
-          ? 'Check-in saved.'
-          : update.isNewVersion
-          ? 'Check-in saved. Plan updated to version ${update.plan.version}'
-                '${update.phaseChanged ? ' (${update.plan.phase.label})' : ''}: '
-                '${update.diff.summary}'
-          : 'Check-in saved. Your plan still fits.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          action: SnackBarAction(
-            label: 'View plan',
-            onPressed: () =>
-                ref.read(appControllerProvider.notifier).selectTab(AppTab.plan),
-          ),
-        ),
-      );
-    } catch (_) {
-      if (context.mounted) showSaveError(context);
-    }
   }
 }
 
@@ -805,10 +782,14 @@ class _MilestoneCheckInSheet extends StatefulWidget {
   const _MilestoneCheckInSheet({
     required this.assessment,
     required this.latest,
+    this.suggestions = const [],
   });
 
   final Assessment assessment;
   final MilestoneCheckIn? latest;
+
+  /// Training symmetry estimates that replace the matching prefilled values.
+  final List<SymmetrySuggestion> suggestions;
 
   @override
   State<_MilestoneCheckInSheet> createState() => _MilestoneCheckInSheetState();
@@ -830,17 +811,28 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
       widget.latest?.hasFunctionalFlexion ?? widget.assessment.canBend;
   late int confidence =
       widget.latest?.confidence ?? widget.assessment.confidence;
+  late final Map<SymmetryArea, int> fromTraining = {
+    for (final suggestion in widget.suggestions)
+      suggestion.area: suggestion.estimate,
+  };
   late int quadStrengthSymmetry =
-      widget.latest?.quadStrengthSymmetry ?? readiness.quadStrengthSymmetry;
+      fromTraining[SymmetryArea.quad] ??
+      widget.latest?.quadStrengthSymmetry ??
+      readiness.quadStrengthSymmetry;
   late int hamstringStrengthSymmetry =
+      fromTraining[SymmetryArea.hamstring] ??
       widget.latest?.hamstringStrengthSymmetry ??
       readiness.hamstringStrengthSymmetry;
   late int hipStrengthSymmetry =
-      widget.latest?.hipStrengthSymmetry ?? readiness.gluteStrengthSymmetry;
+      fromTraining[SymmetryArea.hip] ??
+      widget.latest?.hipStrengthSymmetry ??
+      readiness.gluteStrengthSymmetry;
   late int hopTestSymmetry =
       widget.latest?.hopTestSymmetry ?? readiness.hopTestSymmetry;
   late int balanceSymmetry =
-      widget.latest?.balanceSymmetry ?? readiness.balanceSymmetry;
+      fromTraining[SymmetryArea.balance] ??
+      widget.latest?.balanceSymmetry ??
+      readiness.balanceSymmetry;
   late int koosSportsScore =
       widget.latest?.koosSportsScore ?? readiness.koosSportsScore;
   late int ikdcScore = widget.latest?.ikdcScore ?? readiness.ikdcScore;
@@ -897,6 +889,15 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (widget.suggestions.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'From training: '
+                  '${widget.suggestions.map((item) => '${item.area.label} ${item.estimate}%').join(', ')}. '
+                  'Review before saving.',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
               QuestionSection(
                 title: 'Symptoms',
                 children: [
@@ -1121,6 +1122,122 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
         ptClearanceForSport: ptClearanceForSport,
         physicianClearanceForSport: physicianClearanceForSport,
         notes: notesController.text,
+      ),
+    );
+  }
+}
+
+/// Opens the quick check-in sheet and saves the result, re-planning when it
+/// changes the plan. [suggestions] prefill symmetry values from training.
+Future<void> showCheckInSheet(
+  BuildContext context,
+  WidgetRef ref,
+  AppState state, {
+  List<SymmetrySuggestion> suggestions = const [],
+}) async {
+  final checkIn = await showModalBottomSheet<MilestoneCheckIn>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (context) => _MilestoneCheckInSheet(
+      assessment: state.assessment!,
+      latest: state.latestMilestone,
+      suggestions: suggestions,
+    ),
+  );
+  if (checkIn == null || !context.mounted) return;
+
+  HapticFeedback.mediumImpact();
+  try {
+    final update = await ref
+        .read(appControllerProvider.notifier)
+        .addMilestoneCheckIn(checkIn);
+    if (!context.mounted) return;
+    final message = update == null
+        ? 'Check-in saved.'
+        : update.isNewVersion
+        ? 'Check-in saved. Plan updated to version ${update.plan.version}'
+              '${update.phaseChanged ? ' (${update.plan.phase.label})' : ''}: '
+              '${update.diff.summary}'
+        : 'Check-in saved. Your plan still fits.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'View plan',
+          onPressed: () =>
+              ref.read(appControllerProvider.notifier).selectTab(AppTab.plan),
+        ),
+      ),
+    );
+  } catch (_) {
+    if (context.mounted) showSaveError(context);
+  }
+}
+
+/// One line per area, such as "Hip 85% from training (recorded 70%)".
+String symmetrySuggestionLine(SymmetrySuggestion suggestion) {
+  final recorded = suggestion.recorded == null
+      ? 'not recorded yet'
+      : 'recorded ${suggestion.recorded}%';
+  return '${suggestion.area.label} ${suggestion.estimate}% from training '
+      '($recorded)';
+}
+
+/// Training symmetry estimates that differ from the recorded values, with a
+/// button to review them in a check-in.
+class TrainingSymmetryCard extends StatelessWidget {
+  const TrainingSymmetryCard({
+    super.key,
+    required this.suggestions,
+    required this.onReview,
+  });
+
+  final List<SymmetrySuggestion> suggestions;
+  final VoidCallback onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.compare_arrows,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Training symmetry',
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final suggestion in suggestions)
+              Text(symmetrySuggestionLine(suggestion)),
+            const SizedBox(height: 6),
+            Text(
+              'Estimated from your single-leg sets over recent sessions. '
+              'Review it in a check-in to update your phase.',
+              style: textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: onReview,
+              icon: const Icon(Icons.add_chart),
+              label: const Text('Review check-in'),
+            ),
+          ],
+        ),
       ),
     );
   }

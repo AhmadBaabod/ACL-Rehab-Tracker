@@ -82,6 +82,14 @@ Assessment -> RehabPlan (generated + validated) -> WorkoutLogs/feedback
   Weight is always stored in kilograms; `AppState.weightUnit` only affects
   input and display (`WeightUnit.format`, `toKg`). `AppState.lastSetsFor`
   pre-fills the next workout and drives `loadSuggestion`.
+- **Limb symmetry** (`domain/services/limb_symmetry.dart`): exercises with a
+  `symmetryArea` are logged per leg. `sets` is always the operated leg and
+  `otherLegSets` the other leg. Each leg's best set is scored (Epley for
+  weighted sets, otherwise reps or seconds). `LimbSymmetryAnalyzer.estimates`
+  takes the median of the last 3 sessions within 28 days and needs at least 2.
+  `suggestions` only prefills a check-in (Progress card and workout-saved
+  dialog), and the user must save it. Training symmetry never changes the
+  phase on its own.
 
 ### Exercise catalog
 

@@ -324,6 +324,60 @@ void main() {
     expect(entry.otherLegSets.single.reps, 10);
   });
 
+  testWidgets('training symmetry suggests a prefilled check-in', (
+    tester,
+  ) async {
+    WorkoutLog bridge(int daysAgo, int operatedReps) {
+      final at = DateTime.now().subtract(Duration(days: daysAgo));
+      return WorkoutLog(
+        id: 'w-$daysAgo',
+        planId: 'p',
+        planVersion: 1,
+        sessionId: 'A',
+        sessionName: 'Session A',
+        startedAt: at,
+        completedAt: at,
+        entries: [
+          WorkoutExerciseEntry(
+            exerciseId: 'single-leg-bridge',
+            exerciseName: 'Single-Leg Bridge',
+            plannedSets: 2,
+            completedSets: 1,
+            sets: [SetLog(reps: operatedReps)],
+            otherLegSets: const [SetLog(reps: 10)],
+          ),
+        ],
+        painAfter: 1,
+        effort: 5,
+      );
+    }
+
+    final seed = _bridgeState(logs: [bridge(2, 8), bridge(1, 9)]);
+    await tester.runAsync(
+      () => _openStorage(seed: {'app_state_v2': jsonEncode(seed)}),
+    );
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Progress').last);
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.text('Training symmetry'));
+    expect(find.textContaining('Hip 85%'), findsWidgets);
+    await _tapText(tester, 'Review check-in');
+    expect(find.textContaining('From training'), findsOneWidget);
+    final save = find.text('Save check-in');
+    await tester.scrollUntilVisible(
+      save,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final checkIn = _saved().milestoneCheckIns.last;
+    expect(checkIn.hipStrengthSymmetry, 85);
+  });
+
   testWidgets('saved data from the previous version is migrated', (
     tester,
   ) async {

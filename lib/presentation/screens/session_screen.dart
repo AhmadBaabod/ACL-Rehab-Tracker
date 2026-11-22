@@ -17,6 +17,7 @@ import 'package:acl_rehab/domain/services/plan_generator.dart';
 import 'package:acl_rehab/domain/services/reassessment_advisor.dart';
 import 'package:acl_rehab/domain/services/set_logging.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
+import 'package:acl_rehab/presentation/screens/progress_screen.dart';
 import 'package:acl_rehab/presentation/widgets/common.dart';
 import 'package:acl_rehab/presentation/widgets/exercise_sheets.dart';
 import 'package:acl_rehab/presentation/widgets/exercise_visual.dart';
@@ -777,6 +778,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final next = state.nextSession;
     final target = state.activePlan?.sessionsPerWeek ?? 3;
     final thisWeek = state.workoutsThisWeek(DateTime.now());
+    final symmetry = LimbSymmetryAnalyzer.suggestions(state, DateTime.now());
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -800,6 +802,15 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
                 'next session will be dosed down if it stays high.',
               ),
             ],
+            if (symmetry.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Training symmetry',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              for (final suggestion in symmetry)
+                Text(symmetrySuggestionLine(suggestion)),
+            ],
             if (recommendation.isDue) ...[
               const SizedBox(height: 12),
               Text(
@@ -815,6 +826,11 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             onPressed: () => Navigator.of(context).pop('progress'),
             child: const Text('View progress'),
           ),
+          if (symmetry.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('checkin'),
+              child: const Text('Review check-in'),
+            ),
           if (recommendation.isDue)
             FilledButton(
               onPressed: () => Navigator.of(context).pop('reassess'),
@@ -831,6 +847,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     if (!mounted) return;
     if (action == 'progress') {
       await ref.read(appControllerProvider.notifier).selectTab(AppTab.progress);
+    } else if (action == 'checkin') {
+      await showCheckInSheet(context, ref, state, suggestions: symmetry);
     } else if (action == 'reassess') {
       if (mounted) context.push(AppRoutes.reassess);
     }
