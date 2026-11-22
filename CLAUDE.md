@@ -161,6 +161,8 @@ Share > Add to Home Screen). Pages serves the `gh-pages` branch, which holds
 only build output. To redeploy:
 
 1. `flutter build web --release --no-wasm-dry-run --base-href /ACL-Rehab-Tracker/`
+   from PowerShell (Git Bash rewrites `/ACL-Rehab-Tracker/` into a Windows
+   path and the build fails, leaving the old `build/web` in place).
 2. Copy `build/web` into a scratch folder, add an empty `.nojekyll`, commit it
    on a fresh `gh-pages` branch, and force-push it to `origin gh-pages`.
 
