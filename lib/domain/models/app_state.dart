@@ -45,15 +45,26 @@ class AppState {
   final WeightUnit weightUnit;
 
   /// The sets logged for [exerciseId] in its most recent workout.
-  List<SetLog> lastSetsFor(String exerciseId) {
+  List<SetLog> lastSetsFor(String exerciseId) =>
+      _lastSets(exerciseId, (entry) => entry.sets);
+
+  /// The other (non-operated) leg's sets for a single-leg exercise in its
+  /// most recent workout that logged them.
+  List<SetLog> lastOtherLegSetsFor(String exerciseId) =>
+      _lastSets(exerciseId, (entry) => entry.otherLegSets);
+
+  List<SetLog> _lastSets(
+    String exerciseId,
+    List<SetLog> Function(WorkoutExerciseEntry entry) pick,
+  ) {
     WorkoutLog? latest;
     List<SetLog> sets = const [];
     for (final log in workoutLogs) {
       for (final entry in log.entries) {
-        if (entry.exerciseId != exerciseId || entry.sets.isEmpty) continue;
+        if (entry.exerciseId != exerciseId || pick(entry).isEmpty) continue;
         if (latest == null || log.completedAt.isAfter(latest.completedAt)) {
           latest = log;
-          sets = entry.sets;
+          sets = pick(entry);
         }
       }
     }

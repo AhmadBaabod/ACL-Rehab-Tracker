@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:acl_rehab/data/repositories/app_state_repository.dart';
 import 'package:acl_rehab/domain/models/app_state.dart';
+import 'package:acl_rehab/domain/models/workout_log.dart';
+import 'package:acl_rehab/domain/services/plan_generator.dart';
 import 'package:acl_rehab/main.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:flutter/material.dart';
@@ -70,6 +72,39 @@ String _usDate(DateTime date) =>
 AppState _saved() => AppState.fromJson(
   jsonDecode(box.get('app_state_v2')!) as Map<String, dynamic>,
 );
+
+/// A saved state whose plan has one exercise per session: a single-leg
+/// bridge dosed at 2 x 10 reps.
+Map<String, dynamic> _bridgeState({List<WorkoutLog> logs = const []}) {
+  final assessment = testAssessment(weeks: 12, readiness: loadingReadiness());
+  final plan = PlanGenerator.generate(
+    PlanGenerationInput(assessment: assessment, progressions: const {}),
+  ).toJson();
+  for (final session in plan['sessions'] as List<dynamic>) {
+    final exercises = session['exercises'] as List<dynamic>;
+    final bridge = Map<String, dynamic>.from(exercises.first as Map)
+      ..['exerciseId'] = 'single-leg-bridge'
+      ..['substitutedFromId'] = null;
+    final prescription = Map<String, dynamic>.from(
+      bridge['prescription'] as Map,
+    );
+    prescription
+      ..['sets'] = 2
+      ..['reps'] = '10'
+      ..['hold'] = 'None';
+    bridge['prescription'] = prescription;
+    session['exercises'] = [bridge];
+  }
+  return {
+    ...AppState(
+      assessment: assessment,
+      assessmentUpdatedAt: DateTime.now(),
+      onboardingCompleted: true,
+      workoutLogs: logs,
+    ).toJson(),
+    'plans': [plan],
+  };
+}
 
 void main() {
   testWidgets(
@@ -255,6 +290,39 @@ void main() {
       expect(find.textContaining('Version 2'), findsOneWidget);
     },
   );
+
+  testWidgets('single-leg exercise logs both legs and shows symmetry', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => _openStorage(seed: {'app_state_v2': jsonEncode(_bridgeState())}),
+    );
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Workout').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Single-Leg Bridge'), findsWidgets);
+    final repsFields = find.widgetWithText(TextField, 'Reps');
+    await _reveal(tester, repsFields.first);
+    expect(find.text('Operated'), findsWidgets);
+    expect(find.text('Other'), findsWidgets);
+    await tester.enterText(repsFields.at(0), '8');
+    await tester.enterText(repsFields.at(1), '10');
+    await _tapTooltip(tester, 'Complete set 1');
+    expect(find.text('80% symmetry'), findsOneWidget);
+
+    await _tapText(tester, 'Finish workout');
+    await tester.tap(find.text('Save workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    final entry = _saved().workoutLogs.single.entries.single;
+    expect(entry.exerciseId, 'single-leg-bridge');
+    expect(entry.sets.single.reps, 8);
+    expect(entry.otherLegSets.single.reps, 10);
+  });
 
   testWidgets('saved data from the previous version is migrated', (
     tester,

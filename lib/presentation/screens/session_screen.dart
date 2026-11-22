@@ -12,6 +12,7 @@ import 'package:acl_rehab/domain/models/exercise.dart';
 import 'package:acl_rehab/domain/models/rehab_plan.dart';
 import 'package:acl_rehab/domain/models/session_log.dart';
 import 'package:acl_rehab/domain/models/workout_log.dart';
+import 'package:acl_rehab/domain/services/limb_symmetry.dart';
 import 'package:acl_rehab/domain/services/plan_generator.dart';
 import 'package:acl_rehab/domain/services/reassessment_advisor.dart';
 import 'package:acl_rehab/domain/services/set_logging.dart';
@@ -52,18 +53,62 @@ extension on _PainBand {
 
 /// Editable values for one set during a workout.
 class _SetDraft {
-  _SetDraft({required String value, required String weight})
-    : value = TextEditingController(text: value),
-      weight = TextEditingController(text: weight);
+  _SetDraft({
+    required String value,
+    required String weight,
+    String otherValue = '',
+    String otherWeight = '',
+  }) : value = TextEditingController(text: value),
+       weight = TextEditingController(text: weight),
+       otherValue = TextEditingController(text: otherValue),
+       otherWeight = TextEditingController(text: otherWeight);
 
-  /// Reps, seconds, or minutes, depending on the exercise.
+  /// Reps, seconds, or minutes, depending on the exercise. For single-leg
+  /// exercises these are the operated leg's values.
   final TextEditingController value;
   final TextEditingController weight;
+
+  /// The other leg's values; used only for single-leg exercises.
+  final TextEditingController otherValue;
+  final TextEditingController otherWeight;
   bool done = false;
+
+  SetLog toLog(SetMeasure measure, WeightUnit unit, {bool otherLeg = false}) {
+    final number = int.tryParse((otherLeg ? otherValue : value).text.trim());
+    final amount = number ?? 0;
+    final kg = double.tryParse(
+      (otherLeg ? otherWeight : weight).text.trim().replaceAll(',', '.'),
+    );
+    return switch (measure) {
+      SetMeasure.repsAndWeight => SetLog(
+        reps: amount,
+        weightKg: kg == null || kg <= 0 ? null : unit.toKg(kg),
+      ),
+      SetMeasure.reps => SetLog(reps: amount),
+      SetMeasure.seconds => SetLog(seconds: amount),
+      SetMeasure.minutes => SetLog(seconds: amount * 60),
+    };
+  }
+
+  /// Operated leg as a percentage of the other leg for this set.
+  int? symmetry(SetMeasure measure, WeightUnit unit) {
+    return entrySymmetry(
+      WorkoutExerciseEntry(
+        exerciseId: '',
+        exerciseName: '',
+        plannedSets: 1,
+        completedSets: 1,
+        sets: [toLog(measure, unit)],
+        otherLegSets: [toLog(measure, unit, otherLeg: true)],
+      ),
+    );
+  }
 
   void dispose() {
     value.dispose();
     weight.dispose();
+    otherValue.dispose();
+    otherWeight.dispose();
   }
 }
 
@@ -409,14 +454,17 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final dose = _dose(state, slot);
     final measure = setMeasureFor(exercise, dose);
     final last = state.lastSetsFor(exercise.id);
+    final lastOther = exercise.isUnilateral
+        ? state.lastOtherLegSetsFor(exercise.id)
+        : const <SetLog>[];
     final target = targetValue(measure, dose);
     final unit = state.weightUnit;
 
-    SetLog? previous(int index) =>
-        last.isEmpty ? null : last[index.clamp(0, last.length - 1)];
+    SetLog? previous(List<SetLog> sets, int index) =>
+        sets.isEmpty ? null : sets[index.clamp(0, sets.length - 1)];
 
-    String valueFor(int index) {
-      final set = previous(index);
+    String valueFor(List<SetLog> sets, int index) {
+      final set = previous(sets, index);
       final logged = switch (measure) {
         SetMeasure.repsAndWeight || SetMeasure.reps => set?.reps,
         SetMeasure.seconds => set?.seconds,
@@ -425,15 +473,22 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
       return '${logged ?? target ?? ''}';
     }
 
-    String weightFor(int index) {
-      final kg = previous(index)?.weightKg ?? 0;
+    String weightFor(List<SetLog> sets, int index) {
+      final kg = previous(sets, index)?.weightKg ?? 0;
       if (!measure.tracksWeight || kg <= 0) return '';
       return unit.format(kg).split(' ').first;
     }
 
     return _drafts[slot.exerciseId] = [
       for (var i = 0; i < dose.sets; i++)
-        _SetDraft(value: valueFor(i), weight: weightFor(i)),
+        _SetDraft(
+          value: valueFor(last, i),
+          weight: weightFor(last, i),
+          otherValue: exercise.isUnilateral ? valueFor(lastOther, i) : '',
+          otherWeight: exercise.isUnilateral
+              ? weightFor(lastOther.isEmpty ? last : lastOther, i)
+              : '',
+        ),
     ];
   }
 
@@ -445,22 +500,37 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
       return;
     }
     final dose = _dose(state, slot);
-    final measure = setMeasureFor(_activeExercise(slot), dose);
-    final value = int.tryParse(draft.value.text.trim());
+    final exercise = _activeExercise(slot);
+    final measure = setMeasureFor(exercise, dose);
     final max = measure == SetMeasure.seconds ? 3600 : 300;
-    if (value == null || value <= 0 || value > max) {
-      _showMessage(
-        'Enter the ${measure.fieldLabel.toLowerCase()} for set ${index + 1}.',
-      );
-      return;
-    }
-    if (measure.tracksWeight && draft.weight.text.trim().isNotEmpty) {
-      final weight = double.tryParse(
-        draft.weight.text.trim().replaceAll(',', '.'),
-      );
-      if (weight == null || weight < 0 || weight > 1000) {
-        _showMessage('Enter a valid weight for set ${index + 1}.');
+    final legs = [
+      (value: draft.value, weight: draft.weight, label: ''),
+      if (exercise.isUnilateral)
+        (
+          value: draft.otherValue,
+          weight: draft.otherWeight,
+          label: ' (other leg)',
+        ),
+    ];
+    for (final leg in legs) {
+      final value = int.tryParse(leg.value.text.trim());
+      if (value == null || value <= 0 || value > max) {
+        _showMessage(
+          'Enter the ${measure.fieldLabel.toLowerCase()} for set '
+          '${index + 1}${leg.label}.',
+        );
         return;
+      }
+      if (measure.tracksWeight && leg.weight.text.trim().isNotEmpty) {
+        final weight = double.tryParse(
+          leg.weight.text.trim().replaceAll(',', '.'),
+        );
+        if (weight == null || weight < 0 || weight > 1000) {
+          _showMessage(
+            'Enter a valid weight for set ${index + 1}${leg.label}.',
+          );
+          return;
+        }
       }
     }
     HapticFeedback.selectionClick();
@@ -472,29 +542,26 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     if (index < drafts.length - 1) _startRest(dose.restSeconds);
   }
 
-  /// Completed sets for [slot], converted for storage.
+  /// Completed sets for [slot], converted for storage. For single-leg
+  /// exercises these are the operated leg's sets.
   List<SetLog> _setLogs(AppState state, PlanExercise slot) {
     final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
     final measure = setMeasureFor(_activeExercise(slot), _dose(state, slot));
-    final unit = state.weightUnit;
-    SetLog toLog(_SetDraft draft) {
-      final value = int.tryParse(draft.value.text.trim()) ?? 0;
-      final weight = double.tryParse(
-        draft.weight.text.trim().replaceAll(',', '.'),
-      );
-      return switch (measure) {
-        SetMeasure.repsAndWeight => SetLog(
-          reps: value,
-          weightKg: weight == null || weight <= 0 ? null : unit.toKg(weight),
-        ),
-        SetMeasure.reps => SetLog(reps: value),
-        SetMeasure.seconds => SetLog(seconds: value),
-        SetMeasure.minutes => SetLog(seconds: value * 60),
-      };
-    }
-
     return [
-      for (final draft in drafts.where((draft) => draft.done)) toLog(draft),
+      for (final draft in drafts.where((draft) => draft.done))
+        draft.toLog(measure, state.weightUnit),
+    ];
+  }
+
+  /// The other leg's completed sets, for single-leg exercises only.
+  List<SetLog> _otherLegLogs(AppState state, PlanExercise slot) {
+    final exercise = _activeExercise(slot);
+    if (!exercise.isUnilateral) return const [];
+    final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
+    final measure = setMeasureFor(exercise, _dose(state, slot));
+    return [
+      for (final draft in drafts.where((draft) => draft.done))
+        draft.toLog(measure, state.weightUnit, otherLeg: true),
     ];
   }
 
@@ -676,6 +743,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
               feedback: _feedback[item.exerciseId],
               substitutedFromId: swapped == null ? null : item.exerciseId,
               sets: setLogs[item.exerciseId]!,
+              otherLegSets: _otherLegLogs(state, item),
             );
           }(),
       ],
@@ -1134,6 +1202,24 @@ class _WorkoutExerciseCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (exercise.isUnilateral) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.compare_arrows, size: 16, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Log both legs. Use the same weight on both legs and '
+                      'stop when form slips. The app compares what each leg '
+                      'can do.',
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             for (var i = 0; i < drafts.length; i++)
               _SetRow(
@@ -1141,6 +1227,7 @@ class _WorkoutExerciseCard extends StatelessWidget {
                 draft: drafts[i],
                 measure: measure,
                 unit: unit,
+                unilateral: exercise.isUnilateral,
                 onComplete: () => onCompleteSet(i),
               ),
             const SizedBox(height: 16),
@@ -1321,6 +1408,7 @@ class _SetRow extends StatelessWidget {
     required this.measure,
     required this.unit,
     required this.onComplete,
+    this.unilateral = false,
   });
 
   final int number;
@@ -1328,6 +1416,9 @@ class _SetRow extends StatelessWidget {
   final SetMeasure measure;
   final WeightUnit unit;
   final VoidCallback onComplete;
+
+  /// Shows an "Operated" and an "Other" line for single-leg exercises.
+  final bool unilateral;
 
   @override
   Widget build(BuildContext context) {
@@ -1345,62 +1436,118 @@ class _SetRow extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 52,
-            child: Text(
-              'Set $number',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: done ? scheme.primary : null,
-              ),
-            ),
+    List<Widget> fields(
+      TextEditingController value,
+      TextEditingController weight,
+    ) {
+      return [
+        Expanded(
+          child: TextField(
+            controller: value,
+            enabled: !done,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: decoration(measure.fieldLabel),
           ),
+        ),
+        if (measure.tracksWeight) ...[
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
-              controller: draft.value,
+              controller: weight,
               enabled: !done,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: decoration(measure.fieldLabel),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              textInputAction: TextInputAction.done,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
+              ],
+              decoration: decoration(unit.label, hint: 'Bodyweight'),
+              onSubmitted: unilateral ? null : (_) => onComplete(),
             ),
           ),
-          if (measure.tracksWeight) ...[
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: draft.weight,
-                enabled: !done,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(
-                    RegExp(r'^\d*[.,]?\d{0,2}'),
+        ],
+      ];
+    }
+
+    Widget legRow(
+      String label,
+      TextEditingController value,
+      TextEditingController weight,
+    ) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 68,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...fields(value, weight),
+        ],
+      );
+    }
+
+    final symmetry = unilateral && done ? draft.symmetry(measure, unit) : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 52,
+                child: Text(
+                  'Set $number',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: done ? scheme.primary : null,
                   ),
-                ],
-                decoration: decoration(unit.label, hint: 'Bodyweight'),
-                onSubmitted: (_) => onComplete(),
+                ),
+              ),
+              if (unilateral)
+                Expanded(
+                  child: Column(
+                    children: [
+                      legRow('Operated', draft.value, draft.weight),
+                      const SizedBox(height: 8),
+                      legRow('Other', draft.otherValue, draft.otherWeight),
+                    ],
+                  ),
+                )
+              else
+                ...fields(draft.value, draft.weight),
+              const SizedBox(width: 8),
+              done
+                  ? IconButton.filled(
+                      tooltip: 'Undo set $number',
+                      onPressed: onComplete,
+                      icon: const Icon(Icons.check),
+                    )
+                  : IconButton.outlined(
+                      tooltip: 'Complete set $number',
+                      onPressed: onComplete,
+                      icon: const Icon(Icons.check),
+                    ),
+            ],
+          ),
+          if (symmetry != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 52, top: 6),
+              child: Text(
+                '$symmetry% symmetry',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
-          ],
-          const SizedBox(width: 8),
-          done
-              ? IconButton.filled(
-                  tooltip: 'Undo set $number',
-                  onPressed: onComplete,
-                  icon: const Icon(Icons.check),
-                )
-              : IconButton.outlined(
-                  tooltip: 'Complete set $number',
-                  onPressed: onComplete,
-                  icon: const Icon(Icons.check),
-                ),
         ],
       ),
     );
