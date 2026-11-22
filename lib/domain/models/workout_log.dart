@@ -64,6 +64,7 @@ class WorkoutExerciseEntry {
     this.feedback,
     this.substitutedFromId,
     this.sets = const [],
+    this.otherLegSets = const [],
   });
 
   final String exerciseId;
@@ -73,6 +74,10 @@ class WorkoutExerciseEntry {
 
   /// Reps, weight, or time for each completed set.
   final List<SetLog> sets;
+
+  /// For single-leg exercises, the non-operated leg's sets. [sets] is always
+  /// the operated leg.
+  final List<SetLog> otherLegSets;
   final ExerciseFeedback? feedback;
 
   /// Set when the user swapped in an alternative for this workout.
@@ -98,6 +103,7 @@ class WorkoutExerciseEntry {
       'feedback': feedback?.name,
       'substitutedFromId': substitutedFromId,
       'sets': sets.map((set) => set.toJson()).toList(),
+      'otherLegSets': otherLegSets.map((set) => set.toJson()).toList(),
     };
   }
 
@@ -114,6 +120,11 @@ class WorkoutExerciseEntry {
       feedback: feedback,
       substitutedFromId: data['substitutedFromId'] as String?,
       sets: (data['sets'] as List<dynamic>? ?? const [])
+          .map(
+            (item) => SetLog.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList(),
+      otherLegSets: (data['otherLegSets'] as List<dynamic>? ?? const [])
           .map(
             (item) => SetLog.fromJson(Map<String, dynamic>.from(item as Map)),
           )

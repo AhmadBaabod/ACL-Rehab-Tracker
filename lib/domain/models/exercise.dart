@@ -36,6 +36,22 @@ enum TrainingPurpose {
   conditioning,
 }
 
+/// The quality a single-leg exercise measures when both legs are logged.
+enum SymmetryArea { quad, hamstring, hip, calf, balance }
+
+extension SymmetryAreaX on SymmetryArea {
+  String get label => switch (this) {
+    SymmetryArea.quad => 'Quad',
+    SymmetryArea.hamstring => 'Hamstring',
+    SymmetryArea.hip => 'Hip',
+    SymmetryArea.calf => 'Calf',
+    SymmetryArea.balance => 'Balance',
+  };
+
+  /// Whether a check-in records this area (calf symmetry is shown only).
+  bool get feedsCheckIn => this != SymmetryArea.calf;
+}
+
 enum SessionBlock {
   mobility,
   bilateralStrength,
@@ -417,6 +433,7 @@ class Exercise {
     required this.purpose,
     this.requiredEquipment = const {},
     this.alternativeExerciseIds = const [],
+    this.symmetryArea,
   });
 
   final String id;
@@ -446,6 +463,11 @@ class Exercise {
 
   /// Equipment needed beyond household basics.
   final Set<EquipmentType> requiredEquipment;
+
+  /// Set for single-leg exercises that log the operated and other leg.
+  final SymmetryArea? symmetryArea;
+
+  bool get isUnilateral => symmetryArea != null;
 
   bool get isHighImpact => purpose.isHighImpact;
 

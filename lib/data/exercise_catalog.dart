@@ -476,6 +476,7 @@ class ExerciseCatalog {
         'Set the machine so the pad rests just above the ankle and the knee lines up with the pivot.',
         'Start with the knee bent to about 90 degrees and straighten only to about 45 degrees.',
         'Lower over three seconds without letting the weight stack touch down hard.',
+        'Work one leg at a time so the two legs can be compared.',
       ],
       targets: ['Quadriceps'],
       equipment: ['Leg extension machine'],
@@ -502,6 +503,7 @@ class ExerciseCatalog {
           'Open-chain knee extension rebuilds quadriceps strength that squats alone often miss. Keep to 90-45 degrees until full range is cleared, usually around week 12. Current guidelines (Aspetar 2023) recommend combining open- and closed-chain work, with slow lowering phases.',
       safety: ['Stop for pain at the front of the knee or around the kneecap.'],
       purpose: TrainingPurpose.quadStrength,
+      symmetryArea: SymmetryArea.quad,
       equipmentNeeded: {EquipmentType.gymMachines},
       alternatives: ['seated-knee-extension-90-45', 'wall-sit'],
     ),
@@ -830,6 +832,7 @@ class ExerciseCatalog {
         'Sit tall with the knee bent to 90 degrees.',
         'Straighten the knee only to about 45 degrees, pause, and lower slowly.',
         'Keep the thigh supported and avoid swinging.',
+        'Work one leg at a time so the two legs can be compared.',
       ],
       targets: ['Quadriceps'],
       equipment: ['Chair', 'Ankle weight optional'],
@@ -854,6 +857,7 @@ class ExerciseCatalog {
           'Open-chain extension is commonly limited to 90-45 degrees early to protect the graft.',
       safety: ['Do not straighten past about 45 degrees unless cleared.'],
       purpose: TrainingPurpose.quadStrength,
+      symmetryArea: SymmetryArea.quad,
       alternatives: ['leg-extension-limited', 'box-squat', 'wall-sit'],
     ),
     _exercise(
@@ -986,6 +990,7 @@ class ExerciseCatalog {
           'Unresisted only at this stage; hamstring grafts need slower loading.',
       safety: ['Stop for cramping or pain at the graft harvest site.'],
       purpose: TrainingPurpose.hamstringStrength,
+      symmetryArea: SymmetryArea.hamstring,
       alternatives: ['bridge'],
     ),
     _exercise(
@@ -1019,6 +1024,7 @@ class ExerciseCatalog {
       medicalNotes: 'Calf capacity matters for running readiness later.',
       safety: ['Keep the knee from rolling inward.'],
       purpose: TrainingPurpose.calfStrength,
+      symmetryArea: SymmetryArea.calf,
       alternatives: ['double-leg-calf-raise'],
     ),
     _exercise(
@@ -1206,6 +1212,7 @@ class ExerciseCatalog {
         'Set the pad just above the ankle with the knee aligned to the machine pivot.',
         'Straighten the knee fully and squeeze the thigh for one second.',
         'Lower over three seconds to about 90 degrees of bend.',
+        'Work one leg at a time so the two legs can be compared.',
       ],
       targets: ['Quadriceps'],
       equipment: ['Leg extension machine'],
@@ -1233,6 +1240,7 @@ class ExerciseCatalog {
           'Full-range open-chain loading is commonly cleared around 12 weeks and is one of the most effective ways to close a quadriceps strength gap.',
       safety: ['Stop for pain around the kneecap or a feeling of instability.'],
       purpose: TrainingPurpose.quadStrength,
+      symmetryArea: SymmetryArea.quad,
       equipmentNeeded: {EquipmentType.gymMachines},
       alternatives: ['leg-extension-limited', 'seated-knee-extension-90-45'],
     ),
@@ -1271,6 +1279,7 @@ class ExerciseCatalog {
           'Use clinician-selected load; symmetry is more important than a heavy number.',
       safety: ['Avoid painful depth, momentum, or locking the knee hard.'],
       purpose: TrainingPurpose.quadStrength,
+      symmetryArea: SymmetryArea.quad,
       equipmentNeeded: {EquipmentType.gymMachines},
       alternatives: ['goblet-box-squat', 'bodyweight-tempo-squat'],
     ),
@@ -1307,6 +1316,7 @@ class ExerciseCatalog {
           'A useful bridge to running readiness when knee control is precise.',
       safety: ['Stop if the knee moves inward or pain rises during lowering.'],
       purpose: TrainingPurpose.singleLegStrength,
+      symmetryArea: SymmetryArea.quad,
       alternatives: ['rear-foot-elevated-split-squat', 'reverse-lunge'],
     ),
     _exercise(
@@ -1342,6 +1352,7 @@ class ExerciseCatalog {
       medicalNotes: 'Only use a range that preserves pelvic and knee control.',
       safety: ['Keep a hand near support until balance is consistent.'],
       purpose: TrainingPurpose.singleLegStrength,
+      symmetryArea: SymmetryArea.quad,
       alternatives: ['lateral-step-down', 'reverse-lunge'],
     ),
     _exercise(
@@ -1413,6 +1424,7 @@ class ExerciseCatalog {
           'A hamstring autograft commonly requires delayed resisted hamstring loading.',
       safety: ['Follow your graft-specific loading restriction exactly.'],
       purpose: TrainingPurpose.hamstringStrength,
+      symmetryArea: SymmetryArea.hamstring,
       equipmentNeeded: {EquipmentType.gymMachines},
       alternatives: [
         'banded-hamstring-curl',
@@ -1599,6 +1611,7 @@ class ExerciseCatalog {
       medicalNotes: 'A no-equipment progression for posterior-chain strength.',
       safety: ['Stop for cramping or graft-site pain.'],
       purpose: TrainingPurpose.posteriorChain,
+      symmetryArea: SymmetryArea.hip,
       alternatives: ['romanian-deadlift', 'bridge'],
     ),
     _exercise(
@@ -1634,6 +1647,7 @@ class ExerciseCatalog {
           'Hamstring autografts usually need delayed resisted hamstring loading.',
       safety: ['Follow your graft-specific loading restriction exactly.'],
       purpose: TrainingPurpose.hamstringStrength,
+      symmetryArea: SymmetryArea.hamstring,
       equipmentNeeded: {EquipmentType.resistanceBand},
       alternatives: ['hamstring-curl', 'hamstring-bridge-walkout'],
     ),
@@ -1704,6 +1718,7 @@ class ExerciseCatalog {
           'Mimics stair descent, a common difficulty after ACL reconstruction.',
       safety: ['Stop if the knee drifts inward or pain rises while lowering.'],
       purpose: TrainingPurpose.singleLegStrength,
+      symmetryArea: SymmetryArea.quad,
       alternatives: ['lateral-step-down', 'reverse-lunge'],
     ),
     _exercise(
@@ -1813,6 +1828,7 @@ class ExerciseCatalog {
           'Ten controlled reps to roughly 60 degrees are a useful late-stage criterion.',
       safety: ['Keep a box height that prevents knee collapse or pelvic drop.'],
       purpose: TrainingPurpose.singleLegStrength,
+      symmetryArea: SymmetryArea.quad,
       alternatives: ['lateral-step-down'],
     ),
     _exercise(
@@ -2935,6 +2951,7 @@ class ExerciseCatalog {
     required TrainingPurpose purpose,
     required List<String> alternatives,
     Set<EquipmentType> equipmentNeeded = const {},
+    SymmetryArea? symmetryArea,
   }) {
     return Exercise(
       id: id,
@@ -2960,6 +2977,7 @@ class ExerciseCatalog {
       purpose: purpose,
       requiredEquipment: equipmentNeeded,
       alternativeExerciseIds: alternatives,
+      symmetryArea: symmetryArea,
     );
   }
 
