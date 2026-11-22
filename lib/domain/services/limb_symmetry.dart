@@ -8,8 +8,13 @@ import 'package:acl_rehab/domain/services/rehab_status.dart';
 /// (`kg * (1 + reps / 30)`), otherwise seconds or reps. Null when nothing
 /// usable was logged.
 double? legScore(List<SetLog> sets) {
+  // When any set carried load, only loaded sets count, so a stray bodyweight
+  // set cannot outscore real work.
+  final scored = sets.any((set) => set.isWeighted)
+      ? sets.where((set) => set.isWeighted)
+      : sets;
   double? best;
-  for (final set in sets) {
+  for (final set in scored) {
     final double score = set.isWeighted
         ? set.weightKg! * (1 + (set.reps ?? 0) / 30)
         : (set.seconds ?? set.reps ?? 0).toDouble();

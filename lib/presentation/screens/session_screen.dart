@@ -485,7 +485,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
         _SetDraft(
           value: valueFor(last, i),
           weight: weightFor(last, i),
-          otherValue: exercise.isUnilateral ? valueFor(lastOther, i) : '',
+          // The other leg's reps or time are never prefilled: tapping through
+          // untouched values would report a false 100% symmetry.
           otherWeight: exercise.isUnilateral
               ? weightFor(lastOther.isEmpty ? last : lastOther, i)
               : '',
@@ -506,7 +507,8 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final max = measure == SetMeasure.seconds ? 3600 : 300;
     final legs = [
       (value: draft.value, weight: draft.weight, label: ''),
-      if (exercise.isUnilateral)
+      // The other leg is optional; it is checked only when filled in.
+      if (exercise.isUnilateral && draft.otherValue.text.trim().isNotEmpty)
         (
           value: draft.otherValue,
           weight: draft.otherWeight,
@@ -561,7 +563,9 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
     final measure = setMeasureFor(exercise, _dose(state, slot));
     return [
-      for (final draft in drafts.where((draft) => draft.done))
+      for (final draft in drafts.where(
+        (draft) => draft.done && draft.otherValue.text.trim().isNotEmpty,
+      ))
         draft.toLog(measure, state.weightUnit, otherLeg: true),
     ];
   }
@@ -1229,9 +1233,9 @@ class _WorkoutExerciseCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Log both legs. Use the same weight on both legs and '
-                      'stop when form slips. The app compares what each leg '
-                      'can do.',
+                      'Optional: also log your other leg. Use the same weight '
+                      'on both legs and stop when form slips, then enter the '
+                      'real count. The app compares what each leg can do.',
                       style: textTheme.bodySmall,
                     ),
                   ),

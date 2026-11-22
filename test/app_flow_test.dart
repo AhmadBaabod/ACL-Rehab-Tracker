@@ -307,10 +307,17 @@ void main() {
     await _reveal(tester, repsFields.first);
     expect(find.text('Operated'), findsWidgets);
     expect(find.text('Other'), findsWidgets);
+    // The other leg is never prefilled, so untouched sets cannot fake 100%.
+    final otherSet1 = tester.widget<TextField>(repsFields.at(1));
+    expect(otherSet1.controller!.text, isEmpty);
     await tester.enterText(repsFields.at(0), '8');
     await tester.enterText(repsFields.at(1), '10');
     await _tapTooltip(tester, 'Complete set 1');
     expect(find.text('80% symmetry'), findsOneWidget);
+    // The other leg may be skipped; nothing is stored for it.
+    await tester.enterText(repsFields.at(2), '9');
+    await _tapTooltip(tester, 'Complete set 2');
+    expect(find.byTooltip('Undo set 2'), findsOneWidget);
 
     await _tapText(tester, 'Finish workout');
     await tester.tap(find.text('Save workout'));
@@ -320,7 +327,7 @@ void main() {
 
     final entry = _saved().workoutLogs.single.entries.single;
     expect(entry.exerciseId, 'single-leg-bridge');
-    expect(entry.sets.single.reps, 8);
+    expect(entry.sets.map((set) => set.reps), [8, 9]);
     expect(entry.otherLegSets.single.reps, 10);
   });
 

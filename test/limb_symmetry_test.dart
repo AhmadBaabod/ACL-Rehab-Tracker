@@ -97,6 +97,24 @@ void main() {
       );
     });
 
+    test('a leg with any weighted set is scored on weighted sets only', () {
+      // A stray bodyweight set of 15 reps must not beat 5 kg x 8.
+      expect(
+        legScore(const [SetLog(reps: 15), SetLog(reps: 8, weightKg: 5)]),
+        closeTo(5 * (1 + 8 / 30), 0.001),
+      );
+      expect(
+        entrySymmetry(
+          _entry(
+            'single-leg-leg-press',
+            const [SetLog(reps: 15), SetLog(reps: 8, weightKg: 5)],
+            const [SetLog(reps: 10, weightKg: 5)],
+          ),
+        ),
+        95,
+      );
+    });
+
     test('entrySymmetry skips weighted versus bodyweight', () {
       expect(
         entrySymmetry(
