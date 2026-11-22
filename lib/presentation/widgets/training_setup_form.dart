@@ -28,8 +28,7 @@ class TrainingSetupFields extends StatelessWidget {
       children: [
         QuestionSection(
           title: 'Your goal',
-          subtitle:
-              'Late-stage drills are chosen for what you want to get back to.',
+          subtitle: 'What do you want to get back to?',
           children: [
             Card(
               child: Padding(
@@ -144,9 +143,7 @@ class TrainingSetupFields extends StatelessWidget {
         ),
         QuestionSection(
           title: 'Equipment you can use',
-          subtitle:
-              'A towel, chair, stairs, wall, and floor space are assumed. '
-              'Exercises that need anything else are swapped for same-goal options.',
+          subtitle: 'We assume you have a towel, chair, stairs, and a wall.',
           children: [
             Card(
               child: Column(
@@ -251,8 +248,7 @@ class _TrainingSetupSheetState extends State<_TrainingSetupSheet> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Changes rebuild your plan right away. Your progress and '
-                'exercise levels are kept.',
+                'Your plan updates right away. Your progress is kept.',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

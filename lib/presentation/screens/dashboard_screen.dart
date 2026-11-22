@@ -96,7 +96,7 @@ class DashboardScreen extends ConsumerWidget {
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     subtitle: const Text(
-                      'Add your goal, schedule, and equipment so every exercise fits you.',
+                      'Add your goal, schedule, and equipment.',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => showTrainingSetupSheet(context, ref),
@@ -106,7 +106,7 @@ class DashboardScreen extends ConsumerWidget {
               ],
               if (evaluation.safetyFlags.isNotEmpty) ...[
                 InfoListCard(
-                  title: 'Please contact your clinical team',
+                  title: 'Contact your doctor or physio',
                   items: evaluation.safetyFlags,
                   icon: Icons.medical_information_outlined,
                   color: AppTheme.softRed,
@@ -200,13 +200,13 @@ class DashboardScreen extends ConsumerWidget {
               ],
               const SizedBox(height: AppConstants.sectionGap),
               const InfoListCard(
-                title: 'Progress only with a quiet knee',
+                title: 'Stay safe',
                 icon: Icons.health_and_safety_outlined,
                 color: AppTheme.softRed,
                 items: [
-                  'Do not advance after swelling, instability, locking, or giving way.',
-                  'Surgeon and PT restrictions always override this plan.',
-                  'Reassess every 2-4 weeks, or sooner when the app suggests it.',
+                  'Do not push on if your knee swells, locks, or gives way.',
+                  'Your surgeon and physio always come first.',
+                  'Retest every 2-4 weeks.',
                 ],
               ),
               const SizedBox(height: 12),
@@ -332,8 +332,7 @@ class _NextSessionCard extends ConsumerWidget {
         icon: Icons.lock_outline,
         title: 'No exercises unlocked yet',
         body:
-            'Your current results keep every exercise locked. Review the phase '
-            'criteria below with your clinical team, then reassess.',
+            'No exercises are unlocked yet. Talk to your physio, then retest.',
         actionLabel: 'Update assessment',
         onAction: () => context.push(AppRoutes.reassess),
       );
@@ -460,7 +459,7 @@ class _WeekCard extends ConsumerWidget {
             const SizedBox(height: 12),
             Text(
               adherence == null
-                  ? 'Consistency appears after your first week.'
+                  ? 'Shows after your first week.'
                   : '${(adherence * 100).round()}% of planned sessions in the last 30 days'
                         '${snapshot.streakWeeks > 0 ? ' · ${snapshot.streakWeeks}-week streak' : ''}',
               style: TextStyle(color: scheme.onSurfaceVariant),

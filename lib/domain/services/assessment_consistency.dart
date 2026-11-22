@@ -27,8 +27,7 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
         message:
             'Walking is marked normal, but weight bearing is '
             '${assessment.weightBearing.label.toLowerCase()}.',
-        resolution:
-            'The plan follows the weight-bearing limit until full weight bearing is confirmed.',
+        resolution: 'The plan follows your weight-bearing limit for now.',
       ),
     );
   }
@@ -37,9 +36,8 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
       const ConsistencyIssue(
         id: 'slr-vs-extension',
         message:
-            'A straight leg raise without lag usually needs full knee extension, '
-            'but extension is marked limited.',
-        resolution: 'Extension is treated as limited and stays a top priority.',
+            'You can do a straight leg raise, but your knee does not fully straighten.',
+        resolution: 'Straightening the knee stays a top priority.',
       ),
     );
   }
@@ -49,9 +47,8 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
       ConsistencyIssue(
         id: 'loading-vs-swelling',
         message:
-            'No swelling after exercise is marked, but current swelling is '
-            '${assessment.swelling.label.toLowerCase()}.',
-        resolution: 'Loading is dosed for the current swelling level.',
+            'You said exercise causes no swelling, but you have ${assessment.swelling.label.toLowerCase()} swelling now.',
+        resolution: 'Exercises are set for your current swelling.',
       ),
     );
   }
@@ -60,9 +57,8 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
       const ConsistencyIssue(
         id: 'jog-without-clearance',
         message:
-            'A walk/jog progression is marked complete without PT running clearance.',
-        resolution:
-            'Running drills stay locked until running clearance is recorded.',
+            'You finished walk/jog, but your physio has not cleared you to run.',
+        resolution: 'Running stays locked until your physio clears it.',
       ),
     );
   }
@@ -71,9 +67,9 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
       const ConsistencyIssue(
         id: 'clearance-vs-restriction',
         message:
-            'Running clearance is recorded, but "No Running" is still listed as a restriction.',
+            'You are cleared to run, but "No Running" is still a restriction.',
         resolution:
-            'The restriction wins. Remove it only when your team lifts it.',
+            'The restriction comes first. Remove it only when your physio says so.',
       ),
     );
   }
@@ -83,10 +79,8 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
     issues.add(
       const ConsistencyIssue(
         id: 'early-impact-testing',
-        message:
-            'Hop or landing testing is rarely done before about 12 weeks after surgery.',
-        resolution:
-            'Impact drills stay locked by time and strength criteria regardless.',
+        message: 'Hop tests are rarely done before 12 weeks.',
+        resolution: 'Jumping drills stay locked until you are ready.',
       ),
     );
   }
@@ -95,9 +89,8 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
       const ConsistencyIssue(
         id: 'early-sport-clearance',
         message:
-            'Sport clearance before about 6 months is unusual. Please confirm it with your surgeon.',
-        resolution:
-            'Return-to-sport drills still require their time and strength criteria.',
+            'Sport clearance before 6 months is unusual. Please check with your surgeon.',
+        resolution: 'Sport drills still need enough time and strength.',
       ),
     );
   }
@@ -107,10 +100,9 @@ List<ConsistencyIssue> checkAssessmentConsistency(Assessment assessment) {
     issues.add(
       const ConsistencyIssue(
         id: 'hop-vs-quad',
-        message:
-            'Hop symmetry of 90%+ with quadriceps symmetry below 70% is an unusual combination.',
+        message: 'Hops at 90% with thigh strength under 70% is unusual.',
         resolution:
-            'Quadriceps strength remains a focus; hop drills stay gated by strength criteria.',
+            'Thigh strength stays a focus. Hop drills wait for strength.',
       ),
     );
   }

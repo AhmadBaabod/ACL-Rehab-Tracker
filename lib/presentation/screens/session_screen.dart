@@ -353,10 +353,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             const EmptyStateCard(
               icon: Icons.history,
               title: 'No sessions logged yet',
-              body:
-                  'Log reps and weight for each set, then tap Finish workout. '
-                  'Your sessions build the progress charts and decide when '
-                  'your plan progresses.',
+              body: 'Log each set, then tap Finish workout.',
             )
           else
             Card(
@@ -648,14 +645,14 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
     switch (next.recommendation) {
       case ProgressionRecommendation.progress:
         if (next.atCeiling && previousLevel == next.level) {
-          return 'Top level reached. Your next plan update will move you to a harder variation.';
+          return 'Top level reached. A harder exercise comes next.';
         }
         return 'Progressing.$dose Then: ${exercise.progression}';
       case ProgressionRecommendation.regress:
         return 'Stepping back.$dose Try: ${exercise.regression}';
       case ProgressionRecommendation.maintain:
         if (next.consecutiveGood == 1) {
-          return 'Holding this dose. One more "Just right" session with low pain and it progresses.';
+          return 'Holding this dose. One more "Just right" with low pain and it gets harder.';
         }
         return 'Holding this dose while pain settles.';
     }
@@ -802,8 +799,7 @@ class _SessionScreenState extends ConsumerState<SessionScreen> {
             if (log.painAfter >= 5) ...[
               const SizedBox(height: 8),
               const Text(
-                'Pain was high after this session. Rest, ice, and elevate; the '
-                'next session will be dosed down if it stays high.',
+                'Pain was high. Rest, ice, and raise your leg. Next time will be easier if it stays high.',
               ),
             ],
             if (symmetry.isNotEmpty) ...[
@@ -919,7 +915,7 @@ class _FinishSheetState extends State<_FinishSheet> {
               const SizedBox(height: 6),
               Text(
                 widget.setsDone == 0
-                    ? 'No sets are marked done. You can still log how the knee feels.'
+                    ? 'No sets done. You can still log how your knee feels.'
                     : '${widget.setsDone} of ${widget.setsPlanned} sets completed'
                           '${widget.volume == null ? '.' : ' · ${widget.volume} lifted.'}',
               ),
@@ -1233,9 +1229,7 @@ class _WorkoutExerciseCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Optional: also log your other leg. Use the same weight '
-                      'on both legs and stop when form slips, then enter the '
-                      'real count. The app compares what each leg can do.',
+                      'Optional: log your other leg too. Use the same weight and enter what you really did.',
                       style: textTheme.bodySmall,
                     ),
                   ),
@@ -1600,8 +1594,7 @@ class _NoSession extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          '${evaluation.phase.shortLabel} uses readiness criteria before it '
-          'unlocks loading, running, or impact work.',
+          'Harder work unlocks as you meet the goals for ${evaluation.phase.shortLabel}.',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 16),

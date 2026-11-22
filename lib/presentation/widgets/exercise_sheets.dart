@@ -93,9 +93,7 @@ Future<AlternativeChoice?> showAlternativesSheet(
             ),
             const SizedBox(height: 6),
             Text(
-              'Each option trains the same goal '
-              '(${exercise.purpose.label.toLowerCase()}) and fits your current '
-              'criteria and restrictions.',
+              'Each option has the same goal and is safe for you now.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
@@ -104,9 +102,7 @@ Future<AlternativeChoice?> showAlternativesSheet(
                 icon: Icons.search_off,
                 title: 'No other option fits right now',
                 body:
-                    'Every alternative is locked by your current criteria or needs '
-                    'equipment you have not listed. Keep the current exercise or '
-                    'update your equipment in Training setup.',
+                    'No other options yet. Keep this exercise or add equipment in Training setup.',
               ),
             for (final option in available)
               _AlternativeTile(

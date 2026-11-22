@@ -471,10 +471,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Choose your ACL reconstruction surgery date. Time since surgery '
-                  'is context; phase progression still depends on symptoms and criteria.',
-                ),
+                const Text('When was your ACL surgery?'),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: _pickSurgeryDate,
@@ -605,14 +602,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             YesNoCard(
               title: 'Can you fully straighten the knee?',
-              subtitle:
-                  'The back of the knee rests flat, like the other side. '
-                  'Full extension is the first priority.',
+              subtitle: 'The back of the knee rests flat, like the other side.',
               value: canStraighten,
               onChanged: (value) => setState(() => canStraighten = value),
             ),
             YesNoCard(
-              title: 'Can you bend the knee functionally?',
+              title: 'Can you bend the knee enough?',
               subtitle: 'Enough for stairs and sitting, without forcing it.',
               value: canBend,
               onChanged: (value) => setState(() => canBend = value),
@@ -637,8 +632,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         QuestionSection(
           title: 'Warning signs',
-          subtitle:
-              'Any of these pauses progression until reviewed by your team.',
+          subtitle: 'If any of these happen, tell your doctor or physio.',
           children: [
             YesNoCard(
               title: 'Instability',
@@ -665,9 +659,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             ScaleSliderCard(
               title: 'Confidence in your knee',
-              subtitle:
-                  'Low confidence is common. It helps the plan choose '
-                  'controlled variations first.',
+              subtitle: 'Low confidence is normal. The plan starts easier.',
               value: confidence,
               lowLabel: '0 = none',
               highLabel: '10 = complete',
@@ -688,7 +680,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case Swelling.moderate:
         return 'Clearly swollen; bending feels tight.';
       case Swelling.severe:
-        return 'Very swollen, tense, or warm. Contact your team if this is new.';
+        return 'Very swollen, tight, or warm. Call your doctor if this is new.';
     }
   }
 
@@ -712,7 +704,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case WalkingQuality.painful:
         return 'Walking is painful, even if it looks close to normal.';
       case WalkingQuality.antalgic:
-        return 'A clear limp, shortening the step on the surgical leg.';
+        return 'A clear limp with a shorter step on the operated leg.';
     }
   }
 
@@ -753,9 +745,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Only mark an item if it has already been measured, cleared, '
-                    'or practiced safely with your rehab team. Do not perform a new '
-                    'hop, jump, or running test just to answer.',
+                    'Only tick what your physio has already checked. Do not test hops or running yourself.',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSecondaryContainer,
                     ),
@@ -779,21 +769,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             YesNoCard(
               title: 'Strong quad set?',
               subtitle:
-                  'You can visibly tighten the thigh and the kneecap glides up.',
+                  'You can tighten the thigh and see the kneecap move up.',
               value: strongQuadSet,
               onChanged: (value) => setState(() => strongQuadSet = value),
             ),
             YesNoCard(
               title: 'No pain or swelling increase after exercise?',
-              subtitle: 'Checked later that day and the next morning.',
+              subtitle: 'Later that day and the next morning.',
               value: noPainOrSwellingAfterExercise,
               onChanged: (value) =>
                   setState(() => noPainOrSwellingAfterExercise = value),
             ),
             YesNoCard(
               title: 'Knee bending close to the other side?',
-              subtitle:
-                  'Within about 10 degrees, or roughly 95% of the other knee if measured.',
+              subtitle: 'Almost as far as the other knee.',
               value: flexionNearOtherSide,
               onChanged: (value) =>
                   setState(() => flexionNearOtherSide = value),
@@ -803,53 +792,51 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _Collapsible(
           title: 'Later-stage criteria',
           subtitle: weeks < 10
-              ? 'Usually relevant from about 3 months. Skip if not yet assessed.'
-              : 'Loading, landing, running, and clearances.',
+              ? 'Usually from about 3 months. Skip if not tested yet.'
+              : 'Strength, landing, running, and clearances.',
           initiallyExpanded: weeks >= 10 || laterAnswered,
           children: [
             YesNoCard(
               title: 'Pain-free loading activities?',
-              subtitle:
-                  'Squats, lunges, or step-downs already cleared in rehab, without pain.',
+              subtitle: 'Squats, lunges, or step-downs without pain.',
               value: painFreeLoadingActivities,
               onChanged: (value) =>
                   setState(() => painFreeLoadingActivities = value),
             ),
             YesNoCard(
               title: '10 controlled single-leg squats?',
-              subtitle:
-                  'To about 60 degrees without the knee collapsing inward.',
+              subtitle: 'Without the knee falling inward.',
               value: singleLegSquatTenReps,
               onChanged: (value) =>
                   setState(() => singleLegSquatTenReps = value),
             ),
             YesNoCard(
               title: 'Good landing control?',
-              subtitle: 'On a hop-down or drop-jump already assessed in rehab.',
+              subtitle: 'Checked by your physio.',
               value: dropJumpGoodControl,
               onChanged: (value) => setState(() => dropJumpGoodControl = value),
             ),
             YesNoCard(
-              title: 'Pain-free repeated single-leg hops?',
+              title: 'Pain-free hops on one leg?',
               value: painFreeRepeatedSingleLegHops,
               onChanged: (value) =>
                   setState(() => painFreeRepeatedSingleLegHops = value),
             ),
             YesNoCard(
-              title: 'Completed a walk/jog progression without symptoms?',
+              title: 'Finished a walk/jog program without pain?',
               value: completedJogRunProgram,
               onChanged: (value) =>
                   setState(() => completedJogRunProgram = value),
             ),
             YesNoCard(
               title: 'PT cleared running?',
-              subtitle: 'Required before running drills unlock.',
+              subtitle: 'Needed before running.',
               value: ptClearedForRunning,
               onChanged: (value) => setState(() => ptClearedForRunning = value),
             ),
             YesNoCard(
-              title: 'Physician cleared sport progression?',
-              subtitle: 'Required before return-to-sport drills unlock.',
+              title: 'Doctor cleared you for sport?',
+              subtitle: 'Needed before sport drills.',
               value: mdClearedForSport,
               onChanged: (value) => setState(() => mdClearedForSport = value),
             ),
@@ -858,8 +845,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _Collapsible(
           title: 'Measured results (optional)',
           subtitle:
-              'Symmetry compares the surgical leg with the other leg. Leave '
-              '"Not measured" if you have not been tested.',
+              'How the operated leg compares to the other. Leave "Not measured" if not tested.',
           initiallyExpanded: anyMeasured,
           children: [
             MeasuredScoreCard(
@@ -932,14 +918,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Add restrictions from your surgeon or physical therapist. '
-                  'Restricted exercises are never included in your plan.',
+                  'Add limits from your surgeon or physio. Your plan will follow them.',
                 ),
                 if (!_restrictionsTouched && weeks < 12) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '"No Running" is pre-selected because running is usually not '
-                    'cleared before about 3 months.',
+                    '"No Running" is on because running usually starts after 3 months.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -972,7 +956,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           maxLines: 4,
           textInputAction: TextInputAction.newline,
           decoration: const InputDecoration(
-            labelText: 'Other notes from your clinical team',
+            labelText: 'Other notes from your doctor or physio',
             hintText: 'For example: flexion limited to 90 degrees until week 6',
             alignLabelWithHint: true,
           ),
@@ -1220,23 +1204,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   String _stepDescription(_Step value) {
     switch (value) {
       case _Step.timeline:
-        return 'Set your surgery date to calculate weeks post-op.';
+        return 'Set your surgery date.';
       case _Step.graft:
-        return 'Graft-specific precautions shape how some exercises are loaded.';
+        return 'Your graft type changes some exercises.';
       case _Step.symptoms:
         return widget.mode == AssessmentMode.reassessment
-            ? 'Answers start from your last results. Update anything that changed.'
+            ? 'Update anything that changed.'
             : 'Pain, swelling, movement, and warning signs.';
       case _Step.readiness:
-        return 'Criteria used in modern ACL rehab protocols. Use PT-measured values when available.';
+        return 'Use results from your physio if you have them.';
       case _Step.restrictions:
-        return 'Clinical restrictions that must block certain exercises.';
+        return 'Limits from your surgeon or physio.';
       case _Step.setup:
-        return 'Your goal, time, and equipment decide which exercises fit you.';
+        return 'Your goal, time, and equipment.';
       case _Step.review:
         return widget.mode == AssessmentMode.reassessment
-            ? 'Compare with your last assessment and preview the updated plan.'
-            : 'How your answers shape your plan. Every plan is checked before it is shown.';
+            ? 'See what changed and your new plan.'
+            : 'Here is your plan.';
     }
   }
 
@@ -1277,7 +1261,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     final assessment = draftAssessment;
     if (assessment == null) {
-      _showMessage('Please complete the assessment before continuing.');
+      _showMessage('Please finish the assessment first.');
       return;
     }
     HapticFeedback.mediumImpact();
@@ -1465,7 +1449,7 @@ class _PlanPreviewCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               exercises.isEmpty
-                  ? 'No exercises unlocked yet. Review the criteria below with your team.'
+                  ? 'No exercises unlocked yet. Talk to your physio.'
                   : exercises.join(' · '),
               style: TextStyle(color: scheme.onPrimaryContainer),
             ),

@@ -287,24 +287,20 @@ class ExerciseCriteria {
         milestone?.physicianClearanceForSport ?? protocol.mdClearedForSport;
 
     if (assessment.weeksPostOp < minimumWeeks) {
-      reasons.add(
-        'At least week $minimumWeeks is usually needed before this drill is considered.',
-      );
+      reasons.add('Unlocks around week $minimumWeeks.');
     }
     if (assessment.graftType == GraftType.hamstring &&
         minimumWeeksForHamstringGraft != null &&
         assessment.weeksPostOp < minimumWeeksForHamstringGraft!) {
       reasons.add(
-        'Hamstring graft precautions keep this loading below week '
-        '$minimumWeeksForHamstringGraft.',
+        'With a hamstring graft, this waits until week $minimumWeeksForHamstringGraft.',
       );
     }
     if (assessment.graftType == GraftType.allograft &&
         minimumWeeksForAllograft != null &&
         assessment.weeksPostOp < minimumWeeksForAllograft!) {
       reasons.add(
-        'Allograft precautions keep this drill below week '
-        '$minimumWeeksForAllograft.',
+        'With a donor graft, this waits until week $minimumWeeksForAllograft.',
       );
     }
     if (currentPain > maximumPain) {
@@ -312,18 +308,18 @@ class ExerciseCriteria {
     }
     if (currentSwelling.severity > allowedSwelling.severity) {
       reasons.add(
-        'Swelling should be ${allowedSwelling.label.toLowerCase()} or better.',
+        'Swelling should be ${allowedSwelling.label.toLowerCase()} or less.',
       );
     }
     if (requiresFullExtension &&
         !assessment.canStraighten &&
         milestone?.hasFullExtension != true) {
-      reasons.add('Full knee straightening is required.');
+      reasons.add('Your knee needs to straighten fully.');
     }
     if (requiresFunctionalFlexion &&
         !assessment.canBend &&
         milestone?.hasFunctionalFlexion != true) {
-      reasons.add('Functional knee bending is required.');
+      reasons.add('Your knee needs to bend enough.');
     }
     if (requiresFullWeightBearing &&
         (milestone?.weightBearing ?? assessment.weightBearing) !=
@@ -333,67 +329,61 @@ class ExerciseCriteria {
     if (requiresNormalWalking) {
       final walking = milestone?.walkingQuality ?? assessment.walkingQuality;
       if (walking != WalkingQuality.normal) {
-        reasons.add('Walking should be normal without a limp.');
+        reasons.add('You need to walk without a limp.');
       }
     }
     if (requiresNoMechanicalSymptoms && assessment.hasMechanicalSymptoms) {
-      reasons.add(
-        'Instability, locking, or giving way needs clinical review first.',
-      );
+      reasons.add('Tell your physio about the instability or locking first.');
     }
     if (minimumQuadSymmetry > 0 && quadSymmetry < minimumQuadSymmetry) {
       reasons.add(
-        'Quad strength symmetry should be at least $minimumQuadSymmetry%.',
+        'Thigh strength should be $minimumQuadSymmetry% of the other leg.',
       );
     }
     if (minimumHamstringSymmetry > 0 &&
         hamstringSymmetry < minimumHamstringSymmetry) {
       reasons.add(
-        'Hamstring strength symmetry should be at least $minimumHamstringSymmetry%.',
+        'Hamstring strength should be $minimumHamstringSymmetry% of the other leg.',
       );
     }
     if (minimumHipSymmetry > 0 && hipSymmetry < minimumHipSymmetry) {
       reasons.add(
-        'Hip/glute strength symmetry should be at least $minimumHipSymmetry%.',
+        'Hip strength should be $minimumHipSymmetry% of the other leg.',
       );
     }
     if (minimumHopSymmetry > 0 && hopSymmetry < minimumHopSymmetry) {
-      reasons.add('Hop test symmetry should be at least $minimumHopSymmetry%.');
+      reasons.add('Hops should be $minimumHopSymmetry% of the other leg.');
     }
     if (minimumBalanceSymmetry > 0 &&
         balanceSymmetry < minimumBalanceSymmetry) {
       reasons.add(
-        'Balance symmetry should be at least $minimumBalanceSymmetry%.',
+        'Balance should be $minimumBalanceSymmetry% of the other leg.',
       );
     }
     if (requiresPainFreeLoadingActivities && !painFreeLoading) {
-      reasons.add('Loading activities should be pain-free.');
+      reasons.add('Exercises should be pain-free.');
     }
     if (requiresPainFreeRepeatedSingleLegHops && !painFreeRepeatedHops) {
-      reasons.add('Repeated single-leg hops should be pain-free.');
+      reasons.add('Hopping on one leg should be pain-free.');
     }
     if (requiresGoodLandingControl && !goodLandingControl) {
-      reasons.add('Landing mechanics should be controlled and symmetrical.');
+      reasons.add('You need good landing control.');
     }
     if (requiresCompletedJogRunProgram && !completedJogRunProgram) {
-      reasons.add(
-        'A walk/jog or running progression should be completed without symptoms.',
-      );
+      reasons.add('Finish a walk/jog program without pain first.');
     }
     if (requiresRunningTolerance && !canRun) {
-      reasons.add('Running tolerance should be confirmed first.');
+      reasons.add('You need to run without pain first.');
     }
     if (requiresPtClearance && !hasPtClearance) {
-      reasons.add('PT clearance is required before this exercise unlocks.');
+      reasons.add('Your physio needs to clear you first.');
     }
     if (requiresPhysicianClearance && !hasPhysicianClearance) {
-      reasons.add(
-        'Physician clearance is required before this return-to-sport drill unlocks.',
-      );
+      reasons.add('Your doctor needs to clear you for sport first.');
     }
     for (final restriction in blockingRestrictions) {
       if (assessment.hasRestriction(restriction)) {
-        reasons.add('$restriction is currently listed as a restriction.');
+        reasons.add('Blocked by your restriction: $restriction.');
       }
     }
 

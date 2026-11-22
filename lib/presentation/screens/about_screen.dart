@@ -43,7 +43,7 @@ class AboutScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ACL Recovery Coach is a criteria-based recovery companion for people after ACL reconstruction.',
+                        'ACL Recovery Coach guides your recovery after ACL surgery.',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -129,7 +129,7 @@ class AboutScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Change your goal, training days, session length, or equipment. Your plan is rebuilt to match.',
+                                'Change your goal, days, time, or equipment. Your plan updates to match.',
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: Theme.of(
@@ -157,7 +157,7 @@ class AboutScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Use Reassess (Progress tab) to record new results. Correct the initial assessment only if surgery details, graft type, or restrictions were entered wrongly.',
+                                'To log progress, use Reassess on the Progress tab. Only redo this if you entered something wrong.',
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: Theme.of(
@@ -185,60 +185,59 @@ class AboutScreen extends ConsumerWidget {
                       _section(
                         context,
                         icon: Icons.volunteer_activism_outlined,
-                        title: 'Clinical Philosophy',
+                        title: 'How it works',
                         body:
-                            'The program favors symptom response, movement quality, range of motion, strength symmetry, balance, hop testing, restrictions, graft considerations, and PT clearance over calendar time alone.',
+                            'You move forward based on how your knee is doing, not just the date.',
                       ),
                       _section(
                         context,
                         icon: Icons.science_outlined,
-                        title: 'Evidence-Based Rehabilitation',
+                        title: 'Your exercises',
                         body:
-                            'Exercise choices are structured around controlled loading, progressive strength, neuromuscular control, and late-stage return-to-sport criteria. Feedback after each exercise adjusts its dose: two "Just right" sessions with low pain progress it, "Too hard" or pain of 5/10 or more steps it back.',
+                            'Rate each exercise. Two "Just right" with low pain makes it harder. "Too hard" or pain 5/10 makes it easier.',
                       ),
                       _section(
                         context,
                         icon: Icons.rule_outlined,
-                        title: 'Criteria-Based Progression',
-                        body:
-                            'Advanced drills remain locked until pain, swelling, ROM, gait, strength symmetry, balance symmetry, hop symmetry, running tolerance, restrictions, and PT clearance meet the criteria for that drill.',
+                        title: 'Locked exercises',
+                        body: 'Harder drills unlock when your knee is ready.',
                       ),
                       _section(
                         context,
                         icon: Icons.medical_information_outlined,
                         title: 'Medical Disclaimer',
                         body:
-                            'This app is educational and supportive. It does not diagnose, prescribe treatment, replace clinical care, or override surgeon or physical therapist instructions.',
+                            'This app is a guide only. Your surgeon and physio always come first.',
                         accent: AppTheme.softRed,
                       ),
                       _graftSection(context),
                       _section(
                         context,
                         icon: Icons.menu_book_outlined,
-                        title: 'Educational Information',
+                        title: 'Learn as you go',
                         body:
-                            'Patients can review why certain drills are locked, what criteria matter, and how symptoms after exercise should guide the next session.',
+                            'See why drills are locked and what you need to unlock them.',
                       ),
                       _section(
                         context,
                         icon: Icons.source_outlined,
-                        title: 'Protocol Sources',
+                        title: 'Sources',
                         body:
-                            'Criteria and exercise gates are modeled from Mass General Brigham ACL reconstruction rehab guidance, Ohio State Sports Medicine ACL criteria, Aspetar ACLR return-to-running/return-to-sport guidance, and University of Delaware criteria-based ACL practice guidelines.',
+                            'Based on ACL guidelines from Mass General Brigham, Ohio State, Aspetar, MOON, and the University of Delaware.',
                       ),
                       _section(
                         context,
                         icon: Icons.autorenew,
-                        title: 'How Your Plan Adapts',
+                        title: 'Your plan changes with you',
                         body:
-                            'Assessment -> personalized plan -> logged sessions -> reassessment -> updated plan. Your answers set the phase, the focus areas, and which exercises fit your goal, time, and equipment. Every plan is quality-checked before it is shown. Session feedback adjusts each exercise dose, and when you improve (or symptoms rise), the app recommends a reassessment that compares your results and rebuilds the plan.',
+                            'Assessment, plan, workouts, retest, new plan. When you improve, the app asks you to retest and updates your plan.',
                       ),
                       _section(
                         context,
                         icon: Icons.lock_outline,
                         title: 'Your Data',
                         body:
-                            'Assessments, plans, and workout history are stored only on this device. Nothing is uploaded.',
+                            'Everything stays on this device. Nothing is uploaded.',
                       ),
                     ],
                   ),
@@ -266,9 +265,7 @@ class AboutScreen extends ConsumerWidget {
         icon: const Icon(Icons.restart_alt),
         title: const Text('Correct initial assessment?'),
         content: const Text(
-          'You will go through every question again, starting from your '
-          'current answers. Your workouts, check-ins, and exercise history are '
-          'kept. To record progress instead, use Reassess on the Progress tab.',
+          'You will answer every question again. Your workouts are kept. To log progress, use Reassess instead.',
         ),
         actions: [
           TextButton(

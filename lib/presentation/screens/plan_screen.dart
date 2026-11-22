@@ -88,8 +88,7 @@ class PlanScreen extends ConsumerWidget {
               icon: Icons.lock_outline,
               title: 'No exercises are unlocked yet',
               body:
-                  'Your current answers keep every exercise locked. Review the '
-                  'phase blockers on the Today tab with your clinical team.',
+                  'No exercises are unlocked yet. See the Today tab and talk to your physio.',
             ),
           for (final session in plan.sessions) ...[
             _SessionCard(session: session, appState: appState),
@@ -143,7 +142,7 @@ class _PersonalizeCard extends StatelessWidget {
           ),
         ),
         subtitle: Text(
-          'Tell us your goal, schedule, and equipment so exercises fit you.',
+          'Add your goal, schedule, and equipment.',
           style: TextStyle(color: scheme.onTertiaryContainer),
         ),
         trailing: Icon(Icons.chevron_right, color: scheme.onTertiaryContainer),
@@ -484,9 +483,7 @@ class _ValidationCard extends StatelessWidget {
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           children: [
             Text(
-              'Before a plan is shown, it is checked against your assessment. '
-              'Problems are fixed automatically; anything that cannot be fixed '
-              'is flagged here.',
+              'Your plan is checked for safety. Anything to review shows here.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),

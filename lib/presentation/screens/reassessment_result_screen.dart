@@ -49,9 +49,7 @@ class ReassessmentResultScreen extends ConsumerWidget {
                 EmptyStateCard(
                   icon: Icons.info_outline,
                   title: 'Nothing to compare yet',
-                  body:
-                      'This is your first assessment. Complete a reassessment '
-                      'later to see what has changed.',
+                  body: 'This is your first test. Retest later to see changes.',
                 ),
               ],
             )
@@ -212,9 +210,7 @@ class _Results extends ConsumerWidget {
           const EmptyStateCard(
             icon: Icons.hourglass_empty,
             title: 'No measurable change yet',
-            body:
-                'That is normal between some tests. Consistent sessions usually '
-                'show up in the next reassessment.',
+            body: 'That is normal. Keep training and it will show next time.',
           )
         else
           _MetricList(items: improvements, improved: true),
@@ -225,8 +221,7 @@ class _Results extends ConsumerWidget {
           _MetricList(items: declines, improved: false),
           const SizedBox(height: 8),
           Text(
-            'Your plan has been adjusted for these results. If symptoms keep '
-            'worsening, contact your clinical team.',
+            'Your plan was updated. If symptoms get worse, contact your physio.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
         ],
@@ -354,8 +349,7 @@ class _PlanChanges extends StatelessWidget {
         title: 'Same exercises, same doses',
         body: plan == null
             ? 'Your plan is unchanged.'
-            : 'Your results did not call for exercise changes. Keep logging '
-                  'feedback so doses keep adapting.',
+            : 'No exercise changes needed. Keep rating your exercises.',
       );
     }
     Widget row(IconData icon, Color color, String title, String? detail) {

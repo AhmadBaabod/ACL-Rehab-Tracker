@@ -263,8 +263,7 @@ class PlanValidator {
       );
     }
     check.passDetail =
-        'All ${work.ids.length} exercises meet their unlock criteria and your '
-        'listed restrictions.';
+        'All ${work.ids.length} exercises are safe for your stage and restrictions.';
     return check;
   }
 
@@ -281,7 +280,7 @@ class PlanValidator {
             12) {
           work.remove(item.exerciseId);
           check.changes.add(
-            'Removed ${exercise.name}: resisted hamstring work waits until week 12 for a hamstring graft.',
+            'Removed ${exercise.name}: with a hamstring graft, weighted hamstring work waits until week 12.',
           );
         } else if (item.prescription.sets > 2) {
           work.replace(
@@ -289,7 +288,7 @@ class PlanValidator {
             item.copyWith(prescription: item.prescription.copyWith(sets: 2)),
           );
           check.changes.add(
-            '${exercise.name} limited to 2 sets to protect the hamstring graft site.',
+            '${exercise.name} kept to 2 sets to protect your graft.',
           );
         }
       }
@@ -300,14 +299,14 @@ class PlanValidator {
         if (exercise?.purpose == TrainingPurpose.plyometric) {
           work.remove(item.exerciseId);
           check.changes.add(
-            'Removed ${exercise!.name}: single-leg hopping waits until about 6 months with an allograft.',
+            'Removed ${exercise!.name}: with a donor graft, one-leg hopping waits about 6 months.',
           );
         }
       }
     }
     check.passDetail = switch (graft) {
       GraftType.hamstring when weeks < 12 =>
-        'Hamstring loading stays unresisted and low-volume before week 12.',
+        'Hamstring work stays light until week 12.',
       _ => 'No conflicts with ${graft.label} graft precautions.',
     };
     return check;
@@ -342,9 +341,8 @@ class PlanValidator {
     }
     final swapped = work.items.any((item) => item.substitutedFromId != null);
     check.passDetail = swapped
-        ? 'Every exercise fits your equipment. Exercises that needed items you '
-              'do not have were swapped for same-goal options.'
-        : 'Every exercise can be done with the equipment you listed.';
+        ? 'Every exercise fits your equipment. Some were swapped to match it.'
+        : 'Every exercise fits your equipment.';
     return check;
   }
 
@@ -354,12 +352,9 @@ class PlanValidator {
       final exercise = ExerciseCatalog.byId(item.exerciseId);
       if (exercise == null || context.allowedByGoal(exercise.purpose)) continue;
       work.remove(item.exerciseId);
-      check.changes.add(
-        'Removed ${exercise.name}: not needed for ${context.profile.goal.label.toLowerCase()}.',
-      );
+      check.changes.add('Removed ${exercise.name}: not needed for your goal.');
     }
-    check.passDetail =
-        'No drills conflict with your goal (${context.profile.goalSummary.toLowerCase()}).';
+    check.passDetail = 'Every exercise fits your goal.';
     return check;
   }
 
@@ -402,9 +397,7 @@ class PlanValidator {
             : 'Replaced ${exercise.name} with the easier $replacement.',
       );
     }
-    check.passDetail =
-        'All exercises are at or below ${cap.label.toLowerCase()} difficulty '
-        'for ${context.phase.label}${context.status.symptomsElevated ? ' with current symptoms' : ''}.';
+    check.passDetail = 'Every exercise is at the right difficulty for you now.';
     return check;
   }
 
@@ -430,13 +423,12 @@ class PlanValidator {
           session.items.remove(extra);
           check.changes.add(
             'Removed ${_name(extra.exerciseId)} from ${session.name}: '
-            'more than two ${entry.key.label.toLowerCase()} exercises.',
+            'too many similar exercises.',
           );
         }
       }
     }
-    check.passDetail =
-        'Each session has distinct exercises with no more than two per training goal.';
+    check.passDetail = 'Each session has a good mix of exercises.';
     return check;
   }
 
@@ -468,14 +460,13 @@ class PlanValidator {
       } else {
         final note = context.lockedNote(purposes.first);
         check.warnings.add(
-          '"${area.title}" cannot be trained yet: ${note.detail}',
+          '"${area.title}" is not possible yet: ${note.detail}',
         );
       }
     }
     check.passDetail = addressable == 0
-        ? 'No specific weaknesses were identified; the plan follows your phase.'
-        : 'All $addressable trainable focus areas from your assessment have '
-              'at least one matching exercise.';
+        ? 'No weak spots found. The plan follows your phase.'
+        : 'Every focus area has at least one exercise.';
     return check;
   }
 
@@ -562,7 +553,7 @@ class PlanValidator {
             ),
           );
           check.changes.add(
-            'Paused progression on ${_name(item.exerciseId)} while pain or swelling is elevated.',
+            '${_name(item.exerciseId)} will not get harder while pain or swelling is high.',
           );
         }
       }
@@ -639,8 +630,7 @@ class PlanValidator {
       }
       if (session.minutes > limit) {
         check.warnings.add(
-          '${session.name} still needs about ${session.minutes} min. Longer '
-          'sessions would fit the essentials more comfortably.',
+          '${session.name} still needs about ${session.minutes} min.',
         );
       }
     }
@@ -676,8 +666,7 @@ class PlanValidator {
       if (!alreadyCapped) {
         final extra = requested - 4;
         check.changes.add(
-          'Strength training is capped at 4 days a week so tissues recover; '
-          'your other $extra ${extra == 1 ? 'day becomes a light day' : 'days become light days'}.',
+          'Strength training is 4 days a week at most, so your knee can recover. The other $extra ${extra == 1 ? 'day is a light day' : 'days are light days'}.',
         );
       }
     }
@@ -698,12 +687,12 @@ class PlanValidator {
       if (withoutImpact.length >= 2) {
         work.sessions.add(_MutableSession('B', 'Session B', withoutImpact));
         check.changes.add(
-          'Impact drills moved to Session A only so they never fall on back-to-back days.',
+          'Jumping drills are only in Session A, so they are never on back-to-back days.',
         );
       }
     } else if (impactIds.length > 2 * work.sessions.length) {
       check.warnings.add(
-        'This plan has several impact drills. Stop if the knee swells the next day.',
+        'This plan has several jumping drills. Stop if your knee swells the next day.',
       );
     }
     check.passDetail = context.phase == RehabPhase.protectionAndMotion
@@ -728,7 +717,7 @@ class PlanValidator {
     }
     if (check.warnings.isNotEmpty) {
       check.warnings.add(
-        'The plan is limited to protected motion work until you have been reviewed.',
+        'The plan keeps to gentle movement until your physio checks your knee.',
       );
     }
     check.passDetail = 'No instability, locking, or giving way was reported.';
@@ -739,13 +728,10 @@ class PlanValidator {
     final check = _Check('content', 'Plan has enough to do');
     final count = work.ids.length;
     if (count == 0) {
-      check.warnings.add(
-        'No exercise is unlocked yet. Review the phase blockers with your clinical team.',
-      );
+      check.warnings.add('No exercises are unlocked yet. Talk to your physio.');
     } else if (count < 3) {
       check.warnings.add(
-        'Only $count ${count == 1 ? 'exercise is' : 'exercises are'} unlocked right now; '
-        'more unlock as your criteria improve.',
+        'Only $count ${count == 1 ? 'exercise is' : 'exercises are'} unlocked now. More unlock as you improve.',
       );
     }
     check.passDetail =

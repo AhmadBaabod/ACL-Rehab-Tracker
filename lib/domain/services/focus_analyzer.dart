@@ -32,18 +32,16 @@ class FocusAnalyzer {
       add(
         FocusAreaType.mechanicalSymptoms,
         FocusPriority.high,
-        'Instability or locking reported',
-        'Instability, locking, or giving way needs clinical review. The plan '
-            'stays with protected motion work until it is assessed.',
+        'Knee instability or locking',
+        'Tell your doctor or physio. Until then, the plan keeps to gentle movement.',
       );
     }
     if (!status.fullExtension) {
       add(
         FocusAreaType.extension,
         FocusPriority.high,
-        'Restore full extension',
-        'The knee does not fully straighten yet. Full extension is the first '
-            'priority after ACL reconstruction.',
+        'Straighten the knee fully',
+        'Your knee does not fully straighten yet. This comes first.',
       );
     }
     if (!status.functionalFlexion) {
@@ -52,8 +50,8 @@ class FocusAnalyzer {
         status.weeksPostOp >= 6 ? FocusPriority.high : FocusPriority.medium,
         'Improve knee bending',
         status.readinessKnown
-            ? 'Bending is limited or not yet within about 10 degrees of the other knee.'
-            : 'Knee bending is not yet functional.',
+            ? 'Your knee does not bend as far as the other one yet.'
+            : 'Your knee does not bend enough yet.',
       );
     }
     if (status.swelling != Swelling.none) {
@@ -62,9 +60,8 @@ class FocusAnalyzer {
         status.swelling.severity >= Swelling.moderate.severity
             ? FocusPriority.high
             : FocusPriority.medium,
-        'Settle swelling',
-        '${status.swelling.label} swelling. Loading stays conservative and '
-            'circulation work is added until it settles.',
+        'Reduce swelling',
+        '${status.swelling.label} swelling. Exercises stay light until it goes down.',
       );
     }
     if (status.pain >= 3) {
@@ -72,23 +69,23 @@ class FocusAnalyzer {
         FocusAreaType.pain,
         status.pain >= 5 ? FocusPriority.high : FocusPriority.medium,
         'Keep pain controlled',
-        'Pain is ${status.pain}/10. Exercise volume and effort are kept below '
-            'the level that flares symptoms.',
+        'Pain is ${status.pain}/10. Exercises are kept easy enough not to make it worse.',
       );
     }
     if (status.readinessKnown &&
         status.weeksPostOp < 16 &&
         (!status.straightLegRaiseNoLag || !status.strongQuadSet)) {
       final missing = [
-        if (!status.straightLegRaiseNoLag) 'a straight leg raise without lag',
-        if (!status.strongQuadSet) 'a strong quad set',
+        if (!status.straightLegRaiseNoLag)
+          'a straight leg raise without the knee bending',
+        if (!status.strongQuadSet) 'a strong thigh squeeze',
       ];
       add(
         FocusAreaType.quadActivation,
         order <= RehabPhase.earlyStrengthening.order
             ? FocusPriority.high
             : FocusPriority.medium,
-        'Wake up the quadriceps',
+        'Wake up the thigh muscle',
         'You have not yet confirmed ${missing.join(' or ')}.',
       );
     }
@@ -96,7 +93,7 @@ class FocusAnalyzer {
       add(
         FocusAreaType.gait,
         order == 0 ? FocusPriority.high : FocusPriority.medium,
-        'Normalize walking',
+        'Walk normally',
         'Walking: ${status.walking.label.toLowerCase()}, weight bearing: '
             '${status.weightBearing.label.toLowerCase()}.',
       );
@@ -108,25 +105,24 @@ class FocusAnalyzer {
         add(
           FocusAreaType.quadStrength,
           FocusPriority.medium,
-          'Build quadriceps strength',
+          'Build thigh strength',
           order >= RehabPhase.advancedStrength.order
-              ? 'Quadriceps symmetry has not been measured. Ask your PT to test it; '
-                    'quad weakness is the most common deficit after ACLR.'
-              : 'Quadriceps weakness is the most common deficit after ACLR.',
+              ? 'Ask your physio to test your thigh strength. It is the most common weakness after ACL surgery.'
+              : 'Thigh weakness is the most common problem after ACL surgery.',
         );
       } else if (quad < 80) {
         add(
           FocusAreaType.quadStrength,
           FocusPriority.high,
           'Close the quadriceps gap',
-          'Quadriceps symmetry is $quad% (target 80% for this stage, 90% for sport).',
+          'Thigh strength is $quad% of the other leg. Aim for 80% now, 90% for sport.',
         );
       } else if (quad < 90 && order >= RehabPhase.neuromuscularControl.order) {
         add(
           FocusAreaType.quadStrength,
           FocusPriority.medium,
           'Close the quadriceps gap',
-          'Quadriceps symmetry is $quad% (target 90% before return to sport).',
+          'Thigh strength is $quad% of the other leg. Aim for 90% before sport.',
         );
       }
     }
@@ -138,7 +134,7 @@ class FocusAnalyzer {
           FocusAreaType.hamstringStrength,
           FocusPriority.high,
           'Build hamstring strength',
-          'Hamstring symmetry is $hamstring% (target 80%, then 90%).',
+          'Hamstring strength is $hamstring% of the other leg. Aim for 80%, then 90%.',
         );
       } else if (hamstring != null &&
           hamstring < 90 &&
@@ -147,14 +143,14 @@ class FocusAnalyzer {
           FocusAreaType.hamstringStrength,
           FocusPriority.medium,
           'Build hamstring strength',
-          'Hamstring symmetry is $hamstring% (target 90% before return to sport).',
+          'Hamstring strength is $hamstring% of the other leg. Aim for 90% before sport.',
         );
       } else if (hamstring == null && status.graftType == GraftType.hamstring) {
         add(
           FocusAreaType.hamstringStrength,
           FocusPriority.low,
           'Rebuild hamstring strength',
-          'Hamstring grafts regain knee-flexor strength gradually.',
+          'With a hamstring graft, this strength comes back slowly.',
         );
       }
     }
@@ -166,7 +162,7 @@ class FocusAnalyzer {
           FocusAreaType.hipStrength,
           hip < 70 ? FocusPriority.high : FocusPriority.medium,
           'Strengthen hip control',
-          'Hip/glute symmetry is $hip% (target 90%).',
+          'Hip strength is $hip% of the other leg. Aim for 90%.',
         );
       }
       final balance = status.balanceSymmetry;
@@ -175,7 +171,7 @@ class FocusAnalyzer {
           FocusAreaType.balance,
           balance < 75 ? FocusPriority.high : FocusPriority.medium,
           'Improve single-leg balance',
-          'Balance symmetry is $balance% (target 90%).',
+          'Balance is $balance% of the other leg. Aim for 90%.',
         );
       }
     }
@@ -185,8 +181,8 @@ class FocusAnalyzer {
         add(
           FocusAreaType.landing,
           FocusPriority.medium,
-          'Refine landing control',
-          'Controlled, symmetrical landing has not been confirmed yet.',
+          'Land with control',
+          'Controlled landing is not confirmed yet.',
         );
       }
       if (goal.includesRunning &&
@@ -196,8 +192,8 @@ class FocusAnalyzer {
           FocusPriority.medium,
           'Prepare for running',
           status.ptClearedForRunning
-              ? 'Running is cleared; complete the walk/jog progression without symptoms.'
-              : 'PT running clearance is not recorded yet.',
+              ? 'You are cleared to run. Build up with walk/jog without pain.'
+              : 'Your physio has not cleared you to run yet.',
         );
       }
       final hop = status.hopSymmetry;
@@ -205,8 +201,8 @@ class FocusAnalyzer {
         add(
           FocusAreaType.hopSymmetry,
           FocusPriority.medium,
-          'Close the hop-test gap',
-          'Hop symmetry is $hop% (target 90%).',
+          'Close the hop gap',
+          'Hop distance is $hop% of the other leg. Aim for 90%.',
         );
       }
     }
@@ -220,11 +216,7 @@ class FocusAnalyzer {
         FocusAreaType.confidence,
         status.confidence <= 2 ? FocusPriority.high : FocusPriority.medium,
         'Rebuild confidence',
-        rsi != null && rsi < 60
-            ? 'Confidence ${status.confidence}/10 and ACL-RSI $rsi. Harder '
-                  'balance and landing variations wait until easier ones feel secure.'
-            : 'Confidence is ${status.confidence}/10. Harder balance and landing '
-                  'variations wait until easier ones feel secure.',
+        'Confidence is ${status.confidence}/10. Harder drills wait until easier ones feel safe.',
       );
     }
 

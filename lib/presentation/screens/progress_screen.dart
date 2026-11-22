@@ -55,7 +55,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
         children: [
           PageHeader(
             title: 'Progress',
-            subtitle: 'Sessions, symptoms, and test results over time.',
+            subtitle: 'Your workouts, symptoms, and tests.',
             actions: [
               FilledButton.icon(
                 onPressed: () => context.push(AppRoutes.reassess),
@@ -133,13 +133,9 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           const SizedBox(height: 10),
           _ChartCard(
             title: 'Knee pain',
-            subtitle:
-                'From assessments, check-ins, and after each session · target 0-2',
+            subtitle: 'Aim for 0-2',
             child: snapshot.painSeries.isEmpty
-                ? const _NoData(
-                    text:
-                        'Pain after each session appears here once you finish a workout.',
-                  )
+                ? const _NoData(text: 'Shows after your first workout.')
                 : TrendLineChart(
                     points: [
                       for (final point in snapshot.painSeries)
@@ -165,10 +161,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                 title: 'Session effort',
                 subtitle: 'How hard each session felt (RPE 1-10)',
                 child: snapshot.effortSeries.length < 2
-                    ? const _NoData(
-                        text:
-                            'Log at least two workouts to see an effort trend.',
-                      )
+                    ? const _NoData(text: 'Shows after two workouts.')
                     : TrendLineChart(
                         points: [
                           for (final point in snapshot.effortSeries)
@@ -190,8 +183,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     '${snapshot.progressions} progressed · ${snapshot.regressions} eased',
                 child: snapshot.totalFeedback == 0
                     ? const _NoData(
-                        text:
-                            'Rate exercises during a workout to see how difficulty is trending.',
+                        text: 'Rate exercises in a workout to see this.',
                       )
                     : ShareBar(
                         segments: [
@@ -235,9 +227,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             EmptyStateCard(
               icon: Icons.straighten,
               title: 'No measurements yet',
-              body:
-                  'Strength, balance, and hop symmetry measured by your PT will be '
-                  'charted here. Add them at your next reassessment.',
+              body: 'Add test results from your physio at your next retest.',
               actionLabel: 'Start reassessment',
               onAction: () => context.push(AppRoutes.reassess),
             )
@@ -278,9 +268,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             const EmptyStateCard(
               icon: Icons.fitness_center,
               title: 'No weights logged in this period',
-              body:
-                  'Enter the weight for each set during a workout. The heaviest '
-                  'weight per session is charted here for each exercise.',
+              body: 'Log weights in a workout to see this.',
             )
           else
             LayoutBuilder(
@@ -323,8 +311,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             EmptyStateCard(
               icon: Icons.sports_gymnastics,
               title: 'No workouts in this period',
-              body:
-                  'Finished workouts appear here with sets, pain, and effort.',
+              body: 'Your finished workouts show here.',
               actionLabel: 'Go to workout',
               onAction: () => ref
                   .read(appControllerProvider.notifier)
@@ -415,8 +402,7 @@ class _VerdictCard extends StatelessWidget {
             const SizedBox(height: 8),
             if (snapshot.insights.isEmpty)
               Text(
-                'Complete a few workouts and a reassessment to see how you are '
-                'trending. Insights compare your recent results with earlier ones.',
+                'Do a few workouts and a retest to see your trends.',
                 style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             for (final insight in snapshot.insights)
@@ -687,8 +673,7 @@ class _CheckIns extends StatelessWidget {
         icon: Icons.add_chart,
         title: 'No check-ins since your last assessment',
         body:
-            'Use Quick check-in between reassessments to log symptoms or new '
-            'measurements. Your plan updates if anything changes.',
+            'Use Quick check-in between retests. Your plan updates if needed.',
       );
     }
     return Column(
@@ -882,9 +867,7 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Log how the knee is doing between reassessments. Enter values '
-                'measured or confirmed by your rehab team. Do not perform a new '
-                'hop, jump, or running test just to complete this.',
+                'How is your knee? Only enter test results from your physio. Do not test hops or running yourself.',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -953,7 +936,7 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
               ),
               QuestionSection(
                 title: 'Measurements',
-                subtitle: 'Leave "Not measured" unless your PT tested it.',
+                subtitle: 'Leave "Not measured" unless your physio tested it.',
                 children: [
                   MeasuredScoreCard(
                     title: 'Quad strength symmetry',
@@ -997,7 +980,7 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
                         setState(() => painFreeLoadingActivities = value),
                   ),
                   YesNoCard(
-                    title: 'PT confirmed 10 controlled single-leg squats?',
+                    title: 'Physio confirmed 10 controlled one-leg squats?',
                     value: canPerformControlledSingleLegSquat,
                     onChanged: (value) => setState(
                       () => canPerformControlledSingleLegSquat = value,
@@ -1027,7 +1010,7 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
                         setState(() => completedJogRunProgram = value),
                   ),
                   YesNoCard(
-                    title: 'PT clearance to start or progress running?',
+                    title: 'Physio cleared you to run?',
                     value: ptClearanceForRunning,
                     onChanged: (value) =>
                         setState(() => ptClearanceForRunning = value),
@@ -1063,7 +1046,7 @@ class _MilestoneCheckInSheetState extends State<_MilestoneCheckInSheet> {
                         setState(() => ptClearanceForSport = value),
                   ),
                   YesNoCard(
-                    title: 'Physician clearance for return to sport?',
+                    title: 'Doctor cleared you for sport?',
                     value: physicianClearanceForSport,
                     onChanged: (value) =>
                         setState(() => physicianClearanceForSport = value),
@@ -1226,8 +1209,7 @@ class TrainingSymmetryCard extends StatelessWidget {
               Text(symmetrySuggestionLine(suggestion)),
             const SizedBox(height: 6),
             Text(
-              'Estimated from your single-leg sets over recent sessions. '
-              'Review it in a check-in to update your phase.',
+              'From your recent one-leg sets. Check it to update your plan.',
               style: textTheme.bodySmall,
             ),
             const SizedBox(height: 10),

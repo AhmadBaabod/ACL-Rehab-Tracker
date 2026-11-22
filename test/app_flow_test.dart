@@ -139,7 +139,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tapText(tester, 'None');
       await _tapText(tester, 'Can you fully straighten the knee?');
-      await _tapText(tester, 'Can you bend the knee functionally?');
+      await _tapText(tester, 'Can you bend the knee enough?');
       await _tapText(tester, 'Full');
       await _tapText(tester, 'Normal');
       await _next(tester);
@@ -376,8 +376,14 @@ void main() {
     await tester.scrollUntilVisible(
       save,
       200,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find
+          .descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
+    await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pumpAndSettle();
 

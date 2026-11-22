@@ -196,8 +196,7 @@ class PlanContext {
       exercise: pick,
       substitutedFrom: ideal.exercise,
       substitutionReason:
-          'No $missing: ${pick.name} trains the same goal '
-          '(${purpose.label.toLowerCase()}) instead of ${ideal.exercise.name}.',
+          'No $missing, so ${pick.name} replaces ${ideal.exercise.name}.',
     );
   }
 
@@ -217,8 +216,7 @@ class PlanContext {
         if (harder != null) {
           return SlotSelection(
             exercise: harder,
-            note:
-                'Progressed from ${previous.name} after it reached its top level.',
+            note: 'Progressed from ${previous.name}. You mastered it.',
           );
         }
       }
@@ -227,8 +225,7 @@ class PlanContext {
         if (easier != null) {
           return SlotSelection(
             exercise: easier,
-            note:
-                'Swapped in for ${previous.name} after repeated "too hard" feedback.',
+            note: 'Replaces ${previous.name}, which felt too hard.',
           );
         }
       }
@@ -242,8 +239,7 @@ class PlanContext {
         exercise: hardest,
         note: hardest.id == tier.first.id
             ? null
-            : 'Harder variation chosen because you already meet the '
-                  '${purpose.label.toLowerCase()} criteria for this stage.',
+            : 'A harder version, because you are ready for it.',
       );
     }
     if (gentle) {
@@ -778,8 +774,7 @@ class PlanGenerator {
     return PlanNote(
       title: purpose.label,
       detail:
-          'Every option needs equipment you have not listed (${needed.join(', ')}). '
-          'Add it in Training setup to include this.',
+          'Needs ${needed.join(', ')}. Add it in Training setup to include this.',
     );
   }
 
@@ -799,9 +794,7 @@ class PlanGenerator {
       PlanNote(
         title: 'Left out for your goal',
         detail:
-            '${_capitalize(skipped.join(', '))} are not included because your '
-            'goal is ${context.profile.goal.label.toLowerCase()}. Change your '
-            'goal in Training setup if that changes.',
+            '${_capitalize(skipped.join(', '))} are left out for your goal. You can change it in Training setup.',
       ),
     ];
   }
@@ -965,15 +958,12 @@ class PlanGenerator {
 
   static List<String> _progressionRules(RehabPhase phase) {
     return [
-      'Progress an exercise after 2 sessions rated "Just right" (or 1 rated '
-          '"Too easy") with pain 2/10 or lower afterward.',
-      'Keep the same dose when pain after exercise is 3-4/10.',
-      'Step back a level when an exercise feels too hard, pain reaches 5/10, '
-          'or swelling is worse the next morning.',
-      'Each level adds or removes one set. At the top level, the next plan '
-          'update moves you to a harder variation.',
+      'Level up after 2 "Just right" or 1 "Too easy" with pain 2/10 or less.',
+      'Pain 3-4/10 after: stay at the same level.',
+      'Too hard, pain 5/10, or more swelling next morning: step back a level.',
+      'Each level is one set more or less. At the top, you move to a harder exercise.',
       if (phase.order >= RehabPhase.neuromuscularControl.order)
-        'Impact and running work only progresses when there is no swelling the next day.',
+        'Running and jumping only progress with no swelling the next day.',
     ];
   }
 
@@ -1016,7 +1006,7 @@ class PlanGenerator {
             '${_swellingText(status.swelling)}, '
             '${status.fullExtension ? 'full' : 'limited'} extension and '
             '${status.walking.label.toLowerCase()} walking. '
-            '${blockers.isEmpty ? 'Criteria for this phase are met.' : 'Next step: ${blockers.first}'}',
+            '${blockers.isEmpty ? 'You meet the goals for this phase.' : 'Next step: ${blockers.first}'}',
       ),
     );
 
@@ -1025,13 +1015,13 @@ class PlanGenerator {
       final names = exercisesByFocus[area.type] ?? const [];
       final addressed = switch (area.type) {
         FocusAreaType.pain || FocusAreaType.swelling when names.isEmpty =>
-          'Volume and effort are reduced to match.',
+          'Workouts are made lighter.',
         FocusAreaType.mechanicalSymptoms =>
-          'Please contact your clinical team before progressing.',
+          'Contact your physio before doing more.',
         _ =>
           names.isEmpty
-              ? 'Not addressable yet. See "Not in your plan yet".'
-              : 'Addressed by ${names.toSet().join(', ')}.',
+              ? 'Not possible yet. See "Not in your plan yet".'
+              : 'Worked on with ${names.toSet().join(', ')}.',
       };
       notes.add(
         PlanNote(title: area.title, detail: '${area.detail} $addressed'),
@@ -1054,7 +1044,7 @@ class PlanGenerator {
           title: 'Matched to your equipment',
           detail:
               '$substitutions ${substitutions == 1 ? 'exercise was' : 'exercises were'} '
-              'swapped for same-goal options that fit what you have.',
+              'swapped to fit your equipment.',
         ),
       );
     }
@@ -1064,8 +1054,7 @@ class PlanGenerator {
         title:
             '${plan.sessionsPerWeek} sessions a week, about ${plan.minutesPerSession} minutes',
         detail: plan.sessions.length > 1
-            ? 'Exercises alternate between Session A and Session B so each '
-                  'session fits your time while the week covers everything.'
+            ? 'Exercises alternate between Session A and B to fit your time.'
             : 'Each session covers the full program.',
       ),
     );
@@ -1076,12 +1065,11 @@ class PlanGenerator {
           title: 'Dosed for your symptoms',
           detail: status.symptomsElevated
               ? 'Pain ${status.pain}/10 with ${_swellingText(status.swelling)}: '
-                    'strength work is one set lighter and effort stays easy.'
+                    'strength work is one set lighter and easy.'
               : status.symptomsMild
               ? 'Pain ${status.pain}/10 with ${_swellingText(status.swelling)}: '
-                    'easier variations and easy effort until the knee is quiet.'
-              : 'Confidence ${status.confidence}/10: the most controlled '
-                    'variations come first.',
+                    'easier exercises until the knee calms down.'
+              : 'Confidence ${status.confidence}/10: the safest exercises come first.',
         ),
       );
     }
@@ -1094,34 +1082,28 @@ class PlanGenerator {
   static String _goalDetail(PlanContext context) {
     final goal = context.profile.goal;
     if (context.phase == RehabPhase.protectionAndMotion) {
-      return 'Early recovery is the same for every goal: motion, swelling '
-          'control, and quadriceps activation. Your goal shapes the plan from '
-          'the strengthening phases onward.';
+      return 'Early recovery is the same for every goal. Your goal shapes the plan once strength work starts.';
     }
     final late = context.phase.order >= RehabPhase.neuromuscularControl.order;
     switch (goal) {
       case RecoveryGoal.dailyActivities:
         return late
-            ? 'Strength, balance, and stair control are emphasized. Running, '
-                  'hopping, and cutting drills are left out.'
-            : 'Balance and single-leg strength get extra priority for walking and stairs.';
+            ? 'Focus on strength, balance, and stairs. No running, hopping, or cutting.'
+            : 'Extra balance and one-leg strength for walking and stairs.';
       case RecoveryGoal.fitness:
         return late
-            ? 'Strength and landing control are emphasized, with optional easy '
-                  'running. Hopping and cutting drills are left out.'
+            ? 'Focus on strength and landing, with optional easy running. No hopping or cutting.'
             : context.profile.has(EquipmentType.stationaryBike)
-            ? 'A stationary-bike warm-up is added for conditioning.'
-            : 'Add a stationary bike in Training setup to include a conditioning warm-up.';
+            ? 'A bike warm-up is added for fitness.'
+            : 'Add a stationary bike in Training setup for a fitness warm-up.';
       case RecoveryGoal.running:
         return late
-            ? 'Running progression, calf capacity, and hopping get extra priority. '
-                  'Cutting drills are left out.'
-            : 'Calf strength gets extra priority to prepare for running later.';
+            ? 'Extra running, calf, and hopping work. No cutting.'
+            : 'Extra calf work to prepare for running.';
       case RecoveryGoal.returnToSport:
         return late
-            ? 'Landing, hopping, running, and change-of-direction drills are '
-                  'included as their criteria are met.'
-            : 'Strength and control come first; sport drills unlock by criteria later.';
+            ? 'Landing, hopping, running, and cutting drills are added as you get ready.'
+            : 'Strength comes first. Sport drills unlock later.';
     }
   }
 
@@ -1133,16 +1115,14 @@ class PlanGenerator {
         return const PlanNote(
           title: 'Hamstring graft precautions',
           detail:
-              'Resisted hamstring loading waits until about week 12. Bridges '
-              'and unresisted curls keep the posterior chain working meanwhile.',
+              'Weighted hamstring work waits until about week 12. Bridges and light curls are used until then.',
         );
       case GraftType.patellarTendon:
         if (context.status.pain < 3) return null;
         return const PlanNote(
           title: 'Patellar tendon graft',
           detail:
-              'Front-of-knee pain guides loading, so shallow-range and isometric '
-              'options are favored while pain is present.',
+              'If the front of your knee hurts, the plan uses shallow and holding exercises.',
         );
       case GraftType.quadriceps:
         return null;
@@ -1150,7 +1130,7 @@ class PlanGenerator {
         return const PlanNote(
           title: 'Allograft',
           detail:
-              'Progression stays conservative, and clinical clearance matters before impact work.',
+              'Progress is slower. Get your physio to clear you before running or jumping.',
         );
     }
   }

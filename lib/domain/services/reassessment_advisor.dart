@@ -103,9 +103,7 @@ class ReassessmentAdvisor {
         reason: ReassessmentReason.symptoms,
         title: 'Check in on your symptoms',
         message:
-            'Recent sessions suggest the plan may be too demanding. Retest your '
-            'symptoms so the plan can step back, and contact your clinical team '
-            'if pain or swelling keeps rising.',
+            'Your plan may be too hard right now. Retest so it can ease off. If pain or swelling keeps rising, contact your physio.',
         evidence: [
           if (recentPain != null && recentPain >= 4)
             'Average pain after your last ${recent.length} sessions: '
@@ -146,8 +144,7 @@ class ReassessmentAdvisor {
       return due(
         ReassessmentReason.ceiling,
         'Ready for a harder plan',
-        'Most of your exercises have reached their top level. Retest now so '
-            'your next plan can move you to harder variations.',
+        'Most exercises are at their top level. Retest to unlock harder ones.',
         ['$atCeiling of ${planIds.length} exercises at their top level'],
       );
     }
@@ -157,9 +154,8 @@ class ReassessmentAdvisor {
         progressed >= progressTarget) {
       return due(
         ReassessmentReason.improvement,
-        'You have improved: time to retest',
-        'Your sessions show meaningful progress. A reassessment will measure '
-            'your new level and update the plan to match.',
+        'You have improved. Time to retest',
+        'You are making good progress. Retest to update your plan.',
         [
           '${workouts.length} sessions completed since your last test',
           '$progressed of ${planIds.length} exercises progressed',
@@ -172,8 +168,7 @@ class ReassessmentAdvisor {
       return due(
         ReassessmentReason.scheduled,
         'Scheduled reassessment',
-        'It has been $daysSince days since your last assessment. Retesting '
-            'every 2-4 weeks keeps your plan matched to your recovery.',
+        'It has been $daysSince days since your last test. Retest every 2-4 weeks to keep your plan up to date.',
         [
           '${workouts.length} sessions logged since your last test',
           if (progressed > 0) '$progressed exercises progressed',
@@ -194,8 +189,7 @@ class ReassessmentAdvisor {
       reason: ReassessmentReason.none,
       title: 'Next reassessment in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
       message:
-          'Or sooner if you improve: log at least $minWorkoutsForImprovement '
-          'sessions and progress $progressTarget exercises with low pain.',
+          'Or sooner: do $minWorkoutsForImprovement workouts and level up $progressTarget exercises with low pain.',
       evidence: [
         '${workouts.length} of $minWorkoutsForImprovement sessions logged',
         '$progressed of $progressTarget exercises progressed',
