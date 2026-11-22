@@ -152,3 +152,16 @@ difficulty count as later progressions. `ExerciseCatalog.sessionFor` and
 
 Remote: `https://github.com/AhmadBaabod/ACL-Rehab-Tracker` (default branch
 `main`). Work on feature branches. The repository stores LF line endings.
+
+## Deploy (iPhone trial via GitHub Pages)
+
+iOS builds need a Mac, so the phone trial uses the web build, hosted at
+https://ahmadbaabod.github.io/ACL-Rehab-Tracker/ (installable via Safari >
+Share > Add to Home Screen). Pages serves the `gh-pages` branch, which holds
+only build output. To redeploy:
+
+1. `flutter build web --release --no-wasm-dry-run --base-href /ACL-Rehab-Tracker/`
+2. Copy `build/web` into a scratch folder, add an empty `.nojekyll`, commit it
+   on a fresh `gh-pages` branch, and force-push it to `origin gh-pages`.
+
+User data lives in the browser's IndexedDB, so redeploying keeps it.
