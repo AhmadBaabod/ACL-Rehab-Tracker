@@ -1,17 +1,32 @@
+import 'dart:async';
+
 import 'package:acl_rehab/core/constants/app_constants.dart';
+import 'package:acl_rehab/core/navigation/app_router.dart';
+import 'package:acl_rehab/core/navigation/app_tabs.dart';
 import 'package:acl_rehab/core/theme/app_theme.dart';
 import 'package:acl_rehab/core/utils/phase_logic.dart';
 import 'package:acl_rehab/data/exercise_catalog.dart';
+import 'package:acl_rehab/domain/models/app_state.dart';
 import 'package:acl_rehab/domain/models/assessment.dart';
 import 'package:acl_rehab/domain/models/exercise.dart';
+import 'package:acl_rehab/domain/models/rehab_plan.dart';
 import 'package:acl_rehab/domain/models/session_log.dart';
+import 'package:acl_rehab/domain/models/workout_log.dart';
+import 'package:acl_rehab/domain/services/limb_symmetry.dart';
+import 'package:acl_rehab/domain/services/plan_generator.dart';
+import 'package:acl_rehab/domain/services/reassessment_advisor.dart';
+import 'package:acl_rehab/domain/services/set_logging.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
-import 'package:acl_rehab/presentation/widgets/clinical_disclaimer_banner.dart';
+import 'package:acl_rehab/presentation/screens/progress_screen.dart';
+import 'package:acl_rehab/presentation/widgets/common.dart';
+import 'package:acl_rehab/presentation/widgets/exercise_sheets.dart';
 import 'package:acl_rehab/presentation/widgets/exercise_visual.dart';
+import 'package:acl_rehab/presentation/widgets/form_widgets.dart';
 import 'package:acl_rehab/presentation/widgets/section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class SessionScreen extends ConsumerStatefulWidget {
   const SessionScreen({super.key});
@@ -20,317 +35,930 @@ class SessionScreen extends ConsumerStatefulWidget {
   ConsumerState<SessionScreen> createState() => _SessionScreenState();
 }
 
-class _SessionScreenState extends ConsumerState<SessionScreen> {
-  int currentIndex = 0;
-  final Map<String, String> _selectedAlternatives = {};
+/// Quick pain options after an exercise, mapped to a representative score.
+enum _PainBand { low, moderate, high }
 
-  @override
-  Widget build(BuildContext context) {
-    final appStateAsync = ref.watch(appControllerProvider);
+extension on _PainBand {
+  String get label => switch (this) {
+    _PainBand.low => '0-2',
+    _PainBand.moderate => '3-4',
+    _PainBand.high => '5+',
+  };
 
-    return appStateAsync.when(
-      data: (appState) {
-        final assessment = appState.assessment;
-        if (assessment == null) {
-          return const Scaffold(
-            body: Center(
-              child: Text('Complete onboarding before starting sessions.'),
-            ),
-          );
-        }
+  int get score => switch (this) {
+    _PainBand.low => 1,
+    _PainBand.moderate => 3,
+    _PainBand.high => 6,
+  };
+}
 
-        final milestone = appState.latestMilestone;
-        final evaluation = evaluateRehabPhase(assessment, milestone: milestone);
-        final exercises = ExerciseCatalog.sessionFor(
-          assessment,
-          milestone: milestone,
-          phase: evaluation.phase,
-        );
-        if (exercises.isEmpty) {
-          return Scaffold(
-            body: _NoPhaseAlignedSession(
-              evaluation: evaluation,
-              onOpenProgress: () => ref
-                  .read(appControllerProvider.notifier)
-                  .updateSelectedIndex(2),
-            ),
-          );
-        }
+/// Editable values for one set during a workout.
+class _SetDraft {
+  _SetDraft({
+    required String value,
+    required String weight,
+    String otherValue = '',
+    String otherWeight = '',
+  }) : value = TextEditingController(text: value),
+       weight = TextEditingController(text: weight),
+       otherValue = TextEditingController(text: otherValue),
+       otherWeight = TextEditingController(text: otherWeight);
 
-        final safeIndex = currentIndex.clamp(0, exercises.length - 1);
-        final slotExercise = exercises[safeIndex];
-        final selectedAlternative = ExerciseCatalog.byId(
-          _selectedAlternatives[slotExercise.id] ?? '',
-        );
-        final alternatives = [
-          slotExercise,
-          ...ExerciseCatalog.alternativesFor(
-            slotExercise,
-            assessment,
-            milestone: milestone,
-          ),
-        ];
-        final exercise = alternatives.contains(selectedAlternative)
-            ? selectedAlternative!
-            : slotExercise;
-        final unlock = exercise.unlockStatus(assessment, milestone);
-        final latestLog = appState.latestLogFor(exercise.id);
-        final progression = appState.exerciseProgressions[exercise.id];
+  /// Reps, seconds, or minutes, depending on the exercise. For single-leg
+  /// exercises these are the operated leg's values.
+  final TextEditingController value;
+  final TextEditingController weight;
 
-        return Scaffold(
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppConstants.horizontalPadding),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 820),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Session',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineMedium
-                                      ?.copyWith(fontWeight: FontWeight.w900),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '${safeIndex + 1} of ${exercises.length} - ${exercise.phase.label}',
-                                  style: Theme.of(context).textTheme.bodyLarge
-                                      ?.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Chip(
-                            avatar: Icon(Icons.auto_awesome_outlined, size: 18),
-                            label: Text('Phase-aligned'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const ClinicalDisclaimerBanner(),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      ExerciseVisual(
-                        exercise: exercise,
-                        locked: !unlock.isUnlocked,
-                      ),
-                      const SizedBox(height: 14),
-                      _ExerciseCard(
-                        exercise: exercise,
-                        unlock: unlock,
-                        latestLog: latestLog,
-                        progression: progression,
-                        alternatives: alternatives,
-                        onSelectAlternative: (alternative) =>
-                            _chooseAlternative(slotExercise, alternative),
-                        onFeedback: (feedback) =>
-                            _recordFeedback(exercise, feedback),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: safeIndex == 0
-                                  ? null
-                                  : () {
-                                      HapticFeedback.selectionClick();
-                                      setState(
-                                        () => currentIndex = safeIndex - 1,
-                                      );
-                                    },
-                              icon: const Icon(Icons.arrow_back),
-                              label: const Text('Previous'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: safeIndex == exercises.length - 1
-                                  ? null
-                                  : () {
-                                      HapticFeedback.selectionClick();
-                                      setState(
-                                        () => currentIndex = safeIndex + 1,
-                                      );
-                                    },
-                              icon: const Icon(Icons.arrow_forward),
-                              label: const Text('Next'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppConstants.sectionGap),
-                      SectionHeader(title: 'Recent Feedback'),
-                      const SizedBox(height: 10),
-                      if (appState.sessionLogs.isEmpty)
-                        const _EmptyFeedback()
-                      else
-                        ...appState.sessionLogs.reversed
-                            .take(5)
-                            .map(
-                              (log) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Card(
-                                  child: ListTile(
-                                    leading: const Icon(Icons.history),
-                                    title: Text(
-                                      log.exerciseName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      '${log.feedback.label} - ${log.recommendation.label}',
-                                    ),
-                                    trailing: Text(_shortDate(log.createdAt)),
-                                  ),
-                                ),
-                              ),
-                            ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (error, stack) =>
-          Scaffold(body: Center(child: Text('Unable to load session: $error'))),
+  /// The other leg's values; used only for single-leg exercises.
+  final TextEditingController otherValue;
+  final TextEditingController otherWeight;
+  bool done = false;
+
+  SetLog toLog(SetMeasure measure, WeightUnit unit, {bool otherLeg = false}) {
+    final number = int.tryParse((otherLeg ? otherValue : value).text.trim());
+    final amount = number ?? 0;
+    final kg = double.tryParse(
+      (otherLeg ? otherWeight : weight).text.trim().replaceAll(',', '.'),
+    );
+    return switch (measure) {
+      SetMeasure.repsAndWeight => SetLog(
+        reps: amount,
+        weightKg: kg == null || kg <= 0 ? null : unit.toKg(kg),
+      ),
+      SetMeasure.reps => SetLog(reps: amount),
+      SetMeasure.seconds => SetLog(seconds: amount),
+      SetMeasure.minutes => SetLog(seconds: amount * 60),
+    };
+  }
+
+  /// Operated leg as a percentage of the other leg for this set.
+  int? symmetry(SetMeasure measure, WeightUnit unit) {
+    return entrySymmetry(
+      WorkoutExerciseEntry(
+        exerciseId: '',
+        exerciseName: '',
+        plannedSets: 1,
+        completedSets: 1,
+        sets: [toLog(measure, unit)],
+        otherLegSets: [toLog(measure, unit, otherLeg: true)],
+      ),
     );
   }
 
-  Future<void> _recordFeedback(
-    Exercise exercise,
-    ExerciseFeedback feedback,
-  ) async {
-    HapticFeedback.mediumImpact();
-    await ref
-        .read(appControllerProvider.notifier)
-        .addSessionFeedback(
-          exerciseId: exercise.id,
-          exerciseName: exercise.name,
-          feedback: feedback,
-        );
+  void dispose() {
+    value.dispose();
+    weight.dispose();
+    otherValue.dispose();
+    otherWeight.dispose();
+  }
+}
+
+class _SessionScreenState extends ConsumerState<SessionScreen> {
+  String? _sessionId;
+  String? _planId;
+  String? _workoutId;
+  DateTime? _startedAt;
+  int _index = 0;
+  bool _saving = false;
+
+  /// Doses are fixed for the whole workout so feedback changes the next one.
+  final Map<String, Prescription> _doses = {};
+  final Map<String, List<_SetDraft>> _drafts = {};
+  final Map<String, ExerciseFeedback> _feedback = {};
+  final Map<String, _PainBand> _pain = {};
+  final Map<String, String> _todaySwaps = {};
+  final Map<String, String> _messages = {};
+  Timer? _restTimer;
+  int _restRemaining = 0;
+
+  bool get _started => _workoutId != null;
+
+  @override
+  void dispose() {
+    _restTimer?.cancel();
+    for (final draft in _drafts.values.expand((drafts) => drafts)) {
+      draft.dispose();
+    }
+    super.dispose();
   }
 
-  void _chooseAlternative(Exercise slotExercise, Exercise alternative) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      if (alternative.id == slotExercise.id) {
-        _selectedAlternatives.remove(slotExercise.id);
-      } else {
-        _selectedAlternatives[slotExercise.id] = alternative.id;
+  /// Drops the set drafts for one slot, or all of them. Their text fields are
+  /// still mounted until the next frame, so controllers are disposed after it.
+  void _clearDrafts([String? slotId]) {
+    final keys = slotId == null ? [..._drafts.keys] : [slotId];
+    final retired = <_SetDraft>[];
+    for (final key in keys) {
+      retired.addAll(_drafts.remove(key) ?? const <_SetDraft>[]);
+      _doses.remove(key);
+    }
+    if (slotId == null) _doses.clear();
+    if (retired.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final draft in retired) {
+        draft.dispose();
       }
     });
   }
 
-  String _shortDate(DateTime date) => '${date.month}/${date.day}';
-}
+  void _reset() {
+    _restTimer?.cancel();
+    _workoutId = null;
+    _startedAt = null;
+    _index = 0;
+    _sessionId = null;
+    _clearDrafts();
+    _feedback.clear();
+    _pain.clear();
+    _todaySwaps.clear();
+    _messages.clear();
+    _restRemaining = 0;
+  }
 
-class _NoPhaseAlignedSession extends StatelessWidget {
-  const _NoPhaseAlignedSession({
-    required this.evaluation,
-    required this.onOpenProgress,
-  });
-
-  final PhaseEvaluation evaluation;
-  final VoidCallback onOpenProgress;
+  void _ensureStarted() {
+    if (_started) return;
+    final now = DateTime.now();
+    _workoutId = 'workout-${now.microsecondsSinceEpoch}';
+    _startedAt = now;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppConstants.horizontalPadding),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.fact_check_outlined,
-                  size: 44,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No phase-aligned session yet',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+    final appState = ref.watch(appControllerProvider).value;
+    final plan = appState?.activePlan;
+    final assessment = appState?.assessment;
+    if (appState == null || assessment == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('Complete your assessment to start sessions.'),
+        ),
+      );
+    }
+    if (plan == null || plan.sessions.isEmpty) {
+      return Scaffold(
+        body: _NoSession(
+          evaluation: evaluateRehabPhase(
+            assessment,
+            milestone: appState.latestMilestone,
+          ),
+        ),
+      );
+    }
+
+    // A new plan version starts a fresh workout.
+    if (_planId != plan.id) {
+      if (_planId != null) _reset();
+      _planId = plan.id;
+    }
+    final session =
+        plan.sessionById(_sessionId ?? '') ??
+        appState.nextSession ??
+        plan.sessions.first;
+    final items = session.exercises;
+    final index = _index.clamp(0, items.length - 1);
+    final slot = items[index];
+    final exercise = _activeExercise(slot);
+    final dose = _dose(appState, slot);
+    final measure = setMeasureFor(exercise, dose);
+    final drafts = _draftsFor(appState, slot);
+    final lastSets = appState.lastSetsFor(exercise.id);
+    final plannedSets = {
+      for (final item in items) item.exerciseId: _dose(appState, item).sets,
+    };
+    final setsDone = {
+      for (final item in items) item.exerciseId: _doneCount(item.exerciseId),
+    };
+    final totalSets = plannedSets.values.fold<int>(0, (a, b) => a + b);
+    final doneSets = setsDone.values.fold<int>(0, (a, b) => a + b);
+
+    return Scaffold(
+      body: ResponsivePage(
+        maxWidth: 820,
+        children: [
+          PageHeader(
+            title: 'Workout',
+            subtitle:
+                '${session.name} · ${session.focus} · about ${session.estimatedMinutes} min',
+          ),
+          if (plan.sessions.length > 1) ...[
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: [
+                for (final option in plan.sessions)
+                  ButtonSegment(
+                    value: option.id,
+                    label: Text(option.name),
+                    icon: option.id == appState.nextSession?.id
+                        ? const Icon(Icons.star_outline, size: 18)
+                        : null,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${evaluation.phase.shortLabel} uses measured readiness criteria before it unlocks loading, running, or impact work.',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 16),
-                const ClinicalDisclaimerBanner(),
-                const SizedBox(height: 18),
-                if (evaluation.blockers.isNotEmpty)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Current criteria to review',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 10),
-                          ...evaluation.blockers.map(
-                            (blocker) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                    Icons.info_outline,
-                                    size: 18,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(blocker)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: onOpenProgress,
-                    icon: const Icon(Icons.monitor_heart_outlined),
-                    label: const Text('Update milestone check-in'),
-                  ),
-                ),
               ],
+              selected: {session.id},
+              onSelectionChanged: (selection) =>
+                  _switchSession(selection.first, session.id),
             ),
+          ],
+          const SizedBox(height: 16),
+          _ProgressStrip(
+            items: items,
+            current: index,
+            setsDone: setsDone,
+            plannedSets: plannedSets,
+            doneSets: doneSets,
+            totalSets: totalSets,
+            onSelect: (value) => setState(() => _index = value),
+          ),
+          const SizedBox(height: 16),
+          ExerciseVisual(exercise: exercise, locked: false),
+          const SizedBox(height: 12),
+          _WorkoutExerciseCard(
+            exercise: exercise,
+            slot: slot,
+            dose: dose,
+            swappedToday: _todaySwaps.containsKey(slot.exerciseId),
+            measure: measure,
+            drafts: drafts,
+            unit: appState.weightUnit,
+            lastTime: summarizeSets(lastSets, appState.weightUnit),
+            suggestion: measure.tracksWeight
+                ? loadSuggestion(lastSets, dose, appState.weightUnit)
+                : null,
+            feedback: _feedback[slot.exerciseId],
+            pain: _pain[slot.exerciseId],
+            message: _messages[slot.exerciseId],
+            restRemaining: _restRemaining,
+            onCompleteSet: (setIndex) => _completeSet(appState, slot, setIndex),
+            onStartRest: () => _startRest(dose.restSeconds),
+            onPain: (band) => setState(() => _pain[slot.exerciseId] = band),
+            onFeedback: (feedback) =>
+                _recordFeedback(slot, exercise, feedback, dose),
+            onSwap: () => _swap(appState, slot, exercise),
+            onUndoSwap: () => setState(() {
+              _todaySwaps.remove(slot.exerciseId);
+              _clearDrafts(slot.exerciseId);
+            }),
+            onDetails: () => showExerciseDetailSheet(context, ref, item: slot),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: index == 0
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _index = index - 1);
+                        },
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Previous'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: index == items.length - 1
+                    ? FilledButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : () =>
+                                  _finish(appState, plan, session, plannedSets),
+                        icon: const Icon(Icons.flag_outlined),
+                        label: const Text('Finish workout'),
+                      )
+                    : FilledButton.icon(
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _index = index + 1);
+                        },
+                        icon: const Icon(Icons.arrow_forward),
+                        label: const Text('Next exercise'),
+                      ),
+              ),
+            ],
+          ),
+          if (index != items.length - 1 && _started) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => _finish(appState, plan, session, plannedSets),
+                child: const Text('Finish workout early'),
+              ),
+            ),
+          ],
+          const SizedBox(height: AppConstants.sectionGap),
+          const SectionHeader(title: 'Recent sessions'),
+          const SizedBox(height: 10),
+          if (appState.workoutLogs.isEmpty)
+            const EmptyStateCard(
+              icon: Icons.history,
+              title: 'No sessions logged yet',
+              body: 'Log each set, then tap Finish workout.',
+            )
+          else
+            Card(
+              child: Column(
+                children: [
+                  for (final log in appState.workoutLogs.reversed.take(4))
+                    ListTile(
+                      leading: const Icon(Icons.check_circle_outline),
+                      title: Text(
+                        log.sessionName,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        '${log.completedSets}/${log.plannedSets} sets · pain '
+                        '${log.painAfter}/10 · effort ${log.effort}/10'
+                        '${log.volumeKg > 0 ? ' · ${appState.weightUnit.format(log.volumeKg)} lifted' : ''}',
+                      ),
+                      trailing: Text(formatDate(log.completedAt)),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Prescription _doseFor(AppState state, PlanExercise slot, Exercise exercise) {
+    if (exercise.id == slot.exerciseId) {
+      return slot.doseFor(state.exerciseProgressions[exercise.id]);
+    }
+    // A today-only swap is dosed for the user like any plan exercise.
+    final context = PlanContext.from(
+      PlanGenerationInput(
+        assessment: state.assessment!,
+        milestone: state.latestMilestone,
+        progressions: state.exerciseProgressions,
+      ),
+    );
+    return context.prescribe(
+      exercise,
+      focus: context.focusFor(exercise.purpose),
+    );
+  }
+
+  Future<void> _switchSession(String id, String currentId) async {
+    if (id == currentId) return;
+    if (_started) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Switch session?'),
+          content: const Text('Sets marked in this workout will be cleared.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Switch'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+    setState(() {
+      _reset();
+      _sessionId = id;
+    });
+  }
+
+  Exercise _activeExercise(PlanExercise slot) {
+    return ExerciseCatalog.byId(
+          _todaySwaps[slot.exerciseId] ?? slot.exerciseId,
+        ) ??
+        ExerciseCatalog.byId(slot.exerciseId)!;
+  }
+
+  Prescription _dose(AppState state, PlanExercise slot) {
+    return _doses.putIfAbsent(
+      slot.exerciseId,
+      () => _doseFor(state, slot, _activeExercise(slot)),
+    );
+  }
+
+  int _doneCount(String slotId) =>
+      _drafts[slotId]?.where((draft) => draft.done).length ?? 0;
+
+  /// Set rows, pre-filled from the last time this exercise was logged.
+  List<_SetDraft> _draftsFor(AppState state, PlanExercise slot) {
+    final existing = _drafts[slot.exerciseId];
+    if (existing != null) return existing;
+    final exercise = _activeExercise(slot);
+    final dose = _dose(state, slot);
+    final measure = setMeasureFor(exercise, dose);
+    final last = state.lastSetsFor(exercise.id);
+    final lastOther = exercise.isUnilateral
+        ? state.lastOtherLegSetsFor(exercise.id)
+        : const <SetLog>[];
+    final target = targetValue(measure, dose);
+    final unit = state.weightUnit;
+
+    SetLog? previous(List<SetLog> sets, int index) =>
+        sets.isEmpty ? null : sets[index.clamp(0, sets.length - 1)];
+
+    String valueFor(List<SetLog> sets, int index) {
+      final set = previous(sets, index);
+      final logged = switch (measure) {
+        SetMeasure.repsAndWeight || SetMeasure.reps => set?.reps,
+        SetMeasure.seconds => set?.seconds,
+        SetMeasure.minutes => set?.seconds == null ? null : set!.seconds! ~/ 60,
+      };
+      return '${logged ?? target ?? ''}';
+    }
+
+    String weightFor(List<SetLog> sets, int index) {
+      final kg = previous(sets, index)?.weightKg ?? 0;
+      if (!measure.tracksWeight || kg <= 0) return '';
+      return unit.format(kg).split(' ').first;
+    }
+
+    return _drafts[slot.exerciseId] = [
+      for (var i = 0; i < dose.sets; i++)
+        _SetDraft(
+          value: valueFor(last, i),
+          weight: weightFor(last, i),
+          // The other leg's reps or time are never prefilled: tapping through
+          // untouched values would report a false 100% symmetry.
+          otherWeight: exercise.isUnilateral
+              ? weightFor(lastOther.isEmpty ? last : lastOther, i)
+              : '',
+        ),
+    ];
+  }
+
+  void _completeSet(AppState state, PlanExercise slot, int index) {
+    final drafts = _draftsFor(state, slot);
+    final draft = drafts[index];
+    if (draft.done) {
+      setState(() => draft.done = false);
+      return;
+    }
+    final dose = _dose(state, slot);
+    final exercise = _activeExercise(slot);
+    final measure = setMeasureFor(exercise, dose);
+    final max = measure == SetMeasure.seconds ? 3600 : 300;
+    final legs = [
+      (value: draft.value, weight: draft.weight, label: ''),
+      // The other leg is optional; it is checked only when filled in.
+      if (exercise.isUnilateral && draft.otherValue.text.trim().isNotEmpty)
+        (
+          value: draft.otherValue,
+          weight: draft.otherWeight,
+          label: ' (other leg)',
+        ),
+    ];
+    for (final leg in legs) {
+      final value = int.tryParse(leg.value.text.trim());
+      if (value == null || value <= 0 || value > max) {
+        _showMessage(
+          'Enter the ${measure.fieldLabel.toLowerCase()} for set '
+          '${index + 1}${leg.label}.',
+        );
+        return;
+      }
+      if (measure.tracksWeight && leg.weight.text.trim().isNotEmpty) {
+        final weight = double.tryParse(
+          leg.weight.text.trim().replaceAll(',', '.'),
+        );
+        if (weight == null || weight < 0 || weight > 1000) {
+          _showMessage(
+            'Enter a valid weight for set ${index + 1}${leg.label}.',
+          );
+          return;
+        }
+      }
+    }
+    HapticFeedback.selectionClick();
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _ensureStarted();
+      draft.done = true;
+    });
+    if (index < drafts.length - 1) _startRest(dose.restSeconds);
+  }
+
+  /// Completed sets for [slot], converted for storage. For single-leg
+  /// exercises these are the operated leg's sets.
+  List<SetLog> _setLogs(AppState state, PlanExercise slot) {
+    final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
+    final measure = setMeasureFor(_activeExercise(slot), _dose(state, slot));
+    return [
+      for (final draft in drafts.where((draft) => draft.done))
+        draft.toLog(measure, state.weightUnit),
+    ];
+  }
+
+  /// The other leg's completed sets, for single-leg exercises only.
+  List<SetLog> _otherLegLogs(AppState state, PlanExercise slot) {
+    final exercise = _activeExercise(slot);
+    if (!exercise.isUnilateral) return const [];
+    final drafts = _drafts[slot.exerciseId] ?? const <_SetDraft>[];
+    final measure = setMeasureFor(exercise, _dose(state, slot));
+    return [
+      for (final draft in drafts.where(
+        (draft) => draft.done && draft.otherValue.text.trim().isNotEmpty,
+      ))
+        draft.toLog(measure, state.weightUnit, otherLeg: true),
+    ];
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _startRest(int seconds) {
+    if (seconds <= 0) return;
+    _restTimer?.cancel();
+    setState(() => _restRemaining = seconds);
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _restRemaining--);
+      if (_restRemaining <= 0) {
+        timer.cancel();
+        HapticFeedback.heavyImpact();
+      }
+    });
+  }
+
+  Future<void> _recordFeedback(
+    PlanExercise slot,
+    Exercise exercise,
+    ExerciseFeedback feedback,
+    Prescription dose,
+  ) async {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _ensureStarted();
+      _feedback[slot.exerciseId] = feedback;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    final previous = ref
+        .read(appControllerProvider)
+        .value
+        ?.exerciseProgressions[exercise.id];
+    try {
+      final next = await controller.addSessionFeedback(
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        feedback: feedback,
+        painAfter: _pain[slot.exerciseId]?.score,
+        workoutId: _workoutId,
+        setsCompleted: _doneCount(slot.exerciseId),
+        setsPlanned: dose.sets,
+      );
+      if (!mounted) return;
+      final nextSets = exercise.id == slot.exerciseId
+          ? slot.doseFor(next).sets
+          : dose.sets;
+      setState(() {
+        _messages[slot.exerciseId] = _feedbackMessage(
+          exercise,
+          next,
+          previousLevel: previous?.level ?? 0,
+          nextSets: nextSets,
+          continuous: dose.sets <= 1,
+        );
+      });
+    } catch (_) {
+      if (mounted) showSaveError(context);
+    }
+  }
+
+  String _feedbackMessage(
+    Exercise exercise,
+    ExerciseProgressionState next, {
+    required int previousLevel,
+    required int nextSets,
+    required bool continuous,
+  }) {
+    final dose = continuous ? '' : ' Next time: $nextSets sets.';
+    switch (next.recommendation) {
+      case ProgressionRecommendation.progress:
+        if (next.atCeiling && previousLevel == next.level) {
+          return 'Top level reached. A harder exercise comes next.';
+        }
+        return 'Progressing.$dose Then: ${exercise.progression}';
+      case ProgressionRecommendation.regress:
+        return 'Stepping back.$dose Try: ${exercise.regression}';
+      case ProgressionRecommendation.maintain:
+        if (next.consecutiveGood == 1) {
+          return 'Holding this dose. One more "Just right" with low pain and it gets harder.';
+        }
+        return 'Holding this dose while pain settles.';
+    }
+  }
+
+  Future<void> _swap(
+    AppState state,
+    PlanExercise slot,
+    Exercise current,
+  ) async {
+    final original = ExerciseCatalog.byId(slot.exerciseId)!;
+    final choice = await showAlternativesSheet(
+      context,
+      exercise: original,
+      state: state,
+      allowTemporary: true,
+    );
+    if (choice == null || !mounted) return;
+    if (!choice.permanent) {
+      setState(() {
+        _todaySwaps[slot.exerciseId] = choice.exercise.id;
+        _clearDrafts(slot.exerciseId);
+      });
+      return;
+    }
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .swapPlanExercise(
+            fromExerciseId: slot.exerciseId,
+            toExerciseId: choice.exercise.id,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${choice.exercise.name} is now in your plan.')),
+      );
+    } catch (_) {
+      if (mounted) showSaveError(context);
+    }
+  }
+
+  Future<void> _finish(
+    AppState state,
+    RehabPlan plan,
+    PlanSession session,
+    Map<String, int> plannedSets,
+  ) async {
+    final setLogs = {
+      for (final item in session.exercises)
+        item.exerciseId: _setLogs(state, item),
+    };
+    final done = setLogs.values.fold<int>(0, (sum, sets) => sum + sets.length);
+    final total = plannedSets.values.fold<int>(0, (a, b) => a + b);
+    final volumeKg = setLogs.values
+        .expand((sets) => sets)
+        .fold<double>(0, (sum, set) => sum + set.volumeKg);
+    final result = await showModalBottomSheet<_FinishResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _FinishSheet(
+        setsDone: done,
+        setsPlanned: total,
+        volume: volumeKg > 0 ? state.weightUnit.format(volumeKg) : null,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    _ensureStarted();
+    final log = WorkoutLog(
+      id: _workoutId!,
+      planId: plan.id,
+      planVersion: plan.version,
+      sessionId: session.id,
+      sessionName: session.name,
+      startedAt: _startedAt!,
+      completedAt: DateTime.now(),
+      entries: [
+        for (final item in session.exercises)
+          () {
+            final swapped = _todaySwaps[item.exerciseId];
+            final exercise = ExerciseCatalog.byId(swapped ?? item.exerciseId);
+            return WorkoutExerciseEntry(
+              exerciseId: swapped ?? item.exerciseId,
+              exerciseName: exercise?.name ?? item.exerciseId,
+              plannedSets:
+                  plannedSets[item.exerciseId] ?? item.prescription.sets,
+              completedSets: setLogs[item.exerciseId]!.length,
+              feedback: _feedback[item.exerciseId],
+              substitutedFromId: swapped == null ? null : item.exerciseId,
+              sets: setLogs[item.exerciseId]!,
+              otherLegSets: _otherLegLogs(state, item),
+            );
+          }(),
+      ],
+      painAfter: result.pain,
+      effort: result.effort,
+      notes: result.notes,
+    );
+
+    setState(() => _saving = true);
+    try {
+      await ref.read(appControllerProvider.notifier).completeWorkout(log);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showSaveError(context);
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _reset();
+    });
+    final updated = ref.read(appControllerProvider).value;
+    if (updated == null) return;
+    await _showCompletion(updated, log);
+  }
+
+  Future<void> _showCompletion(AppState state, WorkoutLog log) async {
+    final recommendation = ReassessmentAdvisor.evaluate(state);
+    final next = state.nextSession;
+    final target = state.activePlan?.sessionsPerWeek ?? 3;
+    final thisWeek = state.workoutsThisWeek(DateTime.now());
+    final symmetry = LimbSymmetryAnalyzer.suggestions(state, DateTime.now());
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.emoji_events_outlined, color: AppTheme.teal),
+        title: const Text('Workout saved'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${log.completedSets} of ${log.plannedSets} sets · pain '
+              '${log.painAfter}/10 · effort ${log.effort}/10',
+            ),
+            const SizedBox(height: 8),
+            Text('$thisWeek of $target sessions done this week.'),
+            if (next != null) Text('Next up: ${next.name}.'),
+            if (log.painAfter >= 5) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Pain was high. Rest, ice, and raise your leg. Next time will be easier if it stays high.',
+              ),
+            ],
+            if (symmetry.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Training symmetry',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              for (final suggestion in symmetry)
+                Text(symmetrySuggestionLine(suggestion)),
+            ],
+            if (recommendation.isDue) ...[
+              const SizedBox(height: 12),
+              Text(
+                recommendation.title,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              Text(recommendation.message),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('progress'),
+            child: const Text('View progress'),
+          ),
+          if (symmetry.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('checkin'),
+              child: const Text('Review check-in'),
+            ),
+          if (recommendation.isDue)
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop('reassess'),
+              child: const Text('Reassess now'),
+            )
+          else
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'progress') {
+      await ref.read(appControllerProvider.notifier).selectTab(AppTab.progress);
+    } else if (action == 'checkin') {
+      await showCheckInSheet(context, ref, state, suggestions: symmetry);
+    } else if (action == 'reassess') {
+      if (mounted) context.push(AppRoutes.reassess);
+    }
+  }
+}
+
+class _FinishResult {
+  const _FinishResult({
+    required this.pain,
+    required this.effort,
+    required this.notes,
+  });
+
+  final int pain;
+  final int effort;
+  final String notes;
+}
+
+class _FinishSheet extends StatefulWidget {
+  const _FinishSheet({
+    required this.setsDone,
+    required this.setsPlanned,
+    this.volume,
+  });
+
+  final int setsDone;
+
+  /// Total load lifted (reps x weight), when any weight was logged.
+  final String? volume;
+  final int setsPlanned;
+
+  @override
+  State<_FinishSheet> createState() => _FinishSheetState();
+}
+
+class _FinishSheetState extends State<_FinishSheet> {
+  int pain = 2;
+  int effort = 5;
+  final notes = TextEditingController();
+
+  @override
+  void dispose() {
+    notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            children: [
+              Text(
+                'Finish workout',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.setsDone == 0
+                    ? 'No sets done. You can still log how your knee feels.'
+                    : '${widget.setsDone} of ${widget.setsPlanned} sets completed'
+                          '${widget.volume == null ? '.' : ' · ${widget.volume} lifted.'}',
+              ),
+              const SizedBox(height: 12),
+              ScaleSliderCard(
+                title: 'Knee pain now',
+                value: pain,
+                lowLabel: '0 = none',
+                highLabel: '10 = worst',
+                onChanged: (value) => setState(() => pain = value),
+              ),
+              const SizedBox(height: 10),
+              ScaleSliderCard(
+                title: 'How hard was the session?',
+                subtitle: 'Overall effort (RPE).',
+                value: effort,
+                lowLabel: '1 = very easy',
+                highLabel: '10 = maximal',
+                onChanged: (value) =>
+                    setState(() => effort = value.clamp(1, 10)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: notes,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  hintText: 'Anything your PT should know',
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(
+                  _FinishResult(
+                    pain: pain,
+                    effort: effort.clamp(1, 10),
+                    notes: notes.text.trim(),
+                  ),
+                ),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Save workout'),
+              ),
+            ],
           ),
         ),
       ),
@@ -338,28 +966,142 @@ class _NoPhaseAlignedSession extends StatelessWidget {
   }
 }
 
-class _ExerciseCard extends StatelessWidget {
-  const _ExerciseCard({
-    required this.exercise,
-    required this.unlock,
-    required this.latestLog,
-    required this.progression,
-    required this.alternatives,
-    required this.onSelectAlternative,
-    required this.onFeedback,
+class _ProgressStrip extends StatelessWidget {
+  const _ProgressStrip({
+    required this.items,
+    required this.current,
+    required this.setsDone,
+    required this.plannedSets,
+    required this.doneSets,
+    required this.totalSets,
+    required this.onSelect,
   });
 
-  final Exercise exercise;
-  final ExerciseUnlockStatus unlock;
-  final SessionLog? latestLog;
-  final ExerciseProgressionState? progression;
-  final List<Exercise> alternatives;
-  final ValueChanged<Exercise> onSelectAlternative;
-  final ValueChanged<ExerciseFeedback> onFeedback;
+  final List<PlanExercise> items;
+  final int current;
+  final Map<String, int> setsDone;
+  final Map<String, int> plannedSets;
+  final int doneSets;
+  final int totalSets;
+  final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Exercise ${current + 1} of ${items.length}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text('$doneSets / $totalSets sets'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: totalSets == 0 ? 0 : doneSets / totalSets,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(999),
+              semanticsLabel: 'Workout progress: $doneSets of $totalSets sets',
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < items.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: () {
+                        final id = items[i].exerciseId;
+                        final complete =
+                            (setsDone[id] ?? 0) >= (plannedSets[id] ?? 1);
+                        return ChoiceChip(
+                          selected: i == current,
+                          avatar: complete
+                              ? Icon(
+                                  Icons.check_circle,
+                                  size: 18,
+                                  color: scheme.primary,
+                                )
+                              : null,
+                          label: Text(
+                            ExerciseCatalog.byId(id)?.name ?? id,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onSelected: (_) => onSelect(i),
+                        );
+                      }(),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkoutExerciseCard extends StatelessWidget {
+  const _WorkoutExerciseCard({
+    required this.exercise,
+    required this.slot,
+    required this.dose,
+    required this.swappedToday,
+    required this.measure,
+    required this.drafts,
+    required this.unit,
+    required this.lastTime,
+    required this.suggestion,
+    required this.feedback,
+    required this.pain,
+    required this.message,
+    required this.restRemaining,
+    required this.onCompleteSet,
+    required this.onStartRest,
+    required this.onPain,
+    required this.onFeedback,
+    required this.onSwap,
+    required this.onUndoSwap,
+    required this.onDetails,
+  });
+
+  final Exercise exercise;
+  final PlanExercise slot;
+  final Prescription dose;
+  final bool swappedToday;
+  final SetMeasure measure;
+  final List<_SetDraft> drafts;
+  final WeightUnit unit;
+
+  /// Summary of the last logged performance, such as "3 x 10 @ 20 kg".
+  final String? lastTime;
+  final String? suggestion;
+  final ExerciseFeedback? feedback;
+  final _PainBand? pain;
+  final String? message;
+  final int restRemaining;
+  final ValueChanged<int> onCompleteSet;
+  final VoidCallback onStartRest;
+  final ValueChanged<_PainBand> onPain;
+  final ValueChanged<ExerciseFeedback> onFeedback;
+  final VoidCallback onSwap;
+  final VoidCallback onUndoSwap;
+  final VoidCallback onDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Card(
       child: Padding(
@@ -371,60 +1113,149 @@ class _ExerciseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        exercise.category.label,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.labelLarge?.copyWith(color: scheme.primary),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        exercise.name,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                    ],
+                  child: Text(
+                    exercise.name,
+                    style: textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Chip(label: Text(exercise.difficultyLevel.label)),
+                IconButton(
+                  tooltip: 'Exercise details',
+                  onPressed: onDetails,
+                  icon: const Icon(Icons.info_outline),
+                ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              exercise.description,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 16),
+            Text(exercise.description, style: textTheme.bodyLarge),
+            if (swappedToday) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.swap_horiz, size: 16, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Swapped in for today. Your plan is unchanged.',
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(onPressed: onUndoSwap, child: const Text('Undo')),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 16,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(slot.reason, style: textTheme.bodySmall),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _SpecChip(icon: Icons.repeat, label: '${exercise.sets} sets'),
-                _SpecChip(
-                  icon: Icons.format_list_numbered,
-                  label: exercise.reps,
+                _chip(
+                  Icons.repeat,
+                  '${dose.sets} ${dose.sets == 1 ? 'set' : 'sets'}',
                 ),
-                _SpecChip(icon: Icons.timer_outlined, label: exercise.holdTime),
-                _SpecChip(
-                  icon: Icons.home_repair_service_outlined,
-                  label: exercise.equipment.join(', '),
-                ),
+                _chip(Icons.format_list_numbered, dose.reps),
+                if (dose.hold != 'None') _chip(Icons.timer_outlined, dose.hold),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 8),
+            _cue(context, Icons.speed, 'Effort', dose.effort),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Log each set',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (dose.restSeconds > 0)
+                  ActionChip(
+                    avatar: const Icon(Icons.hourglass_bottom, size: 18),
+                    label: Text(
+                      restRemaining > 0
+                          ? 'Rest ${restRemaining ~/ 60}:${(restRemaining % 60).toString().padLeft(2, '0')}'
+                          : 'Rest ${dose.restSeconds}s',
+                    ),
+                    onPressed: onStartRest,
+                  ),
+              ],
+            ),
+            if (lastTime != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Last time: $lastTime',
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (suggestion != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.trending_up, size: 16, color: AppTheme.teal),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(suggestion!, style: textTheme.bodySmall),
+                  ),
+                ],
+              ),
+            ],
+            if (exercise.isUnilateral) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.compare_arrows, size: 16, color: scheme.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Optional: log your other leg too. Use the same weight and enter what you really did.',
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            for (var i = 0; i < drafts.length; i++)
+              _SetRow(
+                number: i + 1,
+                draft: drafts[i],
+                measure: measure,
+                unit: unit,
+                unilateral: exercise.isUnilateral,
+                onComplete: () => onCompleteSet(i),
+              ),
+            const SizedBox(height: 16),
             Text(
               'Instructions',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              style: textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 8),
-            ...exercise.instructions.map(
-              (item) => Padding(
+            for (final step in exercise.instructions)
+              Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,299 +1266,147 @@ class _ExerciseCard extends StatelessWidget {
                       color: scheme.primary,
                     ),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(item)),
+                    Expanded(child: Text(step)),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            if (alternatives.length > 1) ...[
-              _AlternativeExercisePicker(
-                currentExercise: exercise,
-                alternatives: alternatives,
-                onSelected: onSelectAlternative,
+            if (dose.level >= 2 && !dose.paused)
+              _cue(
+                context,
+                Icons.north_east,
+                'Ready to progress',
+                exercise.progression,
               ),
-              const SizedBox(height: 12),
-            ],
-            _GuidanceBlock(
-              title: 'Adaptive Progression',
-              rows: [
-                MapEntry('Regression', exercise.regression),
-                MapEntry('Progression', exercise.progression),
-                if (progression != null)
-                  MapEntry('Next session', progression!.recommendation.label),
-                if (latestLog != null)
-                  MapEntry('Last response', latestLog!.feedback.label),
-              ],
+            if (dose.level <= -1)
+              _cue(
+                context,
+                Icons.south_east,
+                'Easier option',
+                exercise.regression,
+              ),
+            _cue(
+              context,
+              Icons.health_and_safety_outlined,
+              'Safety',
+              exercise.safetyWarnings.join(' '),
+              color: AppTheme.softRed,
             ),
-            const SizedBox(height: 12),
-            _GuidanceBlock(
-              title: 'Medical Notes',
-              rows: [
-                MapEntry('Note', exercise.medicalNotes),
-                ...exercise.safetyWarnings.map(
-                  (warning) => MapEntry('Safety', warning),
-                ),
-              ],
-              accent: AppTheme.softRed,
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onSwap,
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Swap exercise'),
             ),
-            const SizedBox(height: 18),
-            if (!unlock.isUnlocked)
-              _LockedReasons(reasons: unlock.reasons)
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'How did that feel?',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
+            const Divider(height: 32),
+            Text(
+              'How did it feel?',
+              style: textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('Knee pain', style: textTheme.bodyMedium),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Wrap(
                     spacing: 8,
-                    runSpacing: 8,
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: () => onFeedback(ExerciseFeedback.tooHard),
-                        icon: const Icon(Icons.trending_down),
-                        label: const Text('Too Hard'),
-                      ),
-                      FilledButton.tonalIcon(
-                        onPressed: () => onFeedback(ExerciseFeedback.justRight),
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('Just Right'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: () => onFeedback(ExerciseFeedback.tooEasy),
-                        icon: const Icon(Icons.trending_up),
-                        label: const Text('Too Easy'),
-                      ),
+                      for (final band in _PainBand.values)
+                        ChoiceChip(
+                          label: Text(band.label),
+                          selected: pain == band,
+                          onSelected: (_) => onPain(band),
+                        ),
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _feedbackButton(ExerciseFeedback.tooHard, Icons.trending_down),
+                _feedbackButton(
+                  ExerciseFeedback.justRight,
+                  Icons.check_circle_outline,
+                ),
+                _feedbackButton(ExerciseFeedback.tooEasy, Icons.trending_up),
+              ],
+            ),
+            if (message != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    message!,
+                    style: TextStyle(color: scheme.onSecondaryContainer),
+                  ),
+                ),
               ),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
-class _AlternativeExercisePicker extends StatelessWidget {
-  const _AlternativeExercisePicker({
-    required this.currentExercise,
-    required this.alternatives,
-    required this.onSelected,
-  });
-
-  final Exercise currentExercise;
-  final List<Exercise> alternatives;
-  final ValueChanged<Exercise> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: () => _showOptions(context),
-      icon: const Icon(Icons.swap_horiz),
-      label: const Text('Choose alternative exercise'),
-    );
-  }
-
-  Future<void> _showOptions(BuildContext context) async {
-    final choice = await showModalBottomSheet<Exercise>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 520),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            children: [
-              Text(
-                'Alternative exercise',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                currentExercise.sessionBlock.label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ...alternatives.map(
-                (exercise) => Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: ListTile(
-                    onTap: () => Navigator.of(context).pop(exercise),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    leading: Icon(
-                      exercise.id == currentExercise.id
-                          ? Icons.check_circle
-                          : Icons.swap_horiz,
-                      color: exercise.id == currentExercise.id
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    title: Text(
-                      exercise.name,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    subtitle: Text(
-                      '${exercise.sets} sets - ${exercise.reps}\n${exercise.equipment.join(', ')}',
-                    ),
-                    isThreeLine: true,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (choice != null) onSelected(choice);
-  }
-}
-
-class _SpecChip extends StatelessWidget {
-  const _SpecChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _chip(IconData icon, String label) {
     return Chip(avatar: Icon(icon, size: 18), label: Text(label));
   }
-}
 
-class _GuidanceBlock extends StatelessWidget {
-  const _GuidanceBlock({required this.title, required this.rows, this.accent});
-
-  final String title;
-  final List<MapEntry<String, String>> rows;
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = accent ?? Theme.of(context).colorScheme.primary;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.46),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.tune, size: 18, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ...rows.map(
-            (row) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: RichText(
-                text: TextSpan(
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  children: [
-                    TextSpan(
-                      text: '${row.key}: ',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    TextSpan(text: row.value),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _feedbackButton(ExerciseFeedback value, IconData icon) {
+    final selected = feedback == value;
+    return selected
+        ? FilledButton.icon(
+            onPressed: () => onFeedback(value),
+            icon: Icon(icon),
+            label: Text(value.label),
+          )
+        : OutlinedButton.icon(
+            onPressed: () => onFeedback(value),
+            icon: Icon(icon),
+            label: Text(value.label),
+          );
   }
-}
 
-class _LockedReasons extends StatelessWidget {
-  const _LockedReasons({required this.reasons});
-
-  final List<String> reasons;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.errorContainer.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
+  Widget _cue(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String body, {
+    Color? color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.lock_outline,
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Why this is locked',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
+          Icon(
+            icon,
+            size: 18,
+            color: color ?? Theme.of(context).colorScheme.primary,
           ),
-          const SizedBox(height: 10),
-          ...reasons.map(
-            (reason) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
                 children: [
-                  Text(
-                    '- ',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
+                  TextSpan(
+                    text: '$title: ',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                  Expanded(
-                    child: Text(
-                      reason,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                    ),
-                  ),
+                  TextSpan(text: body),
                 ],
               ),
             ),
@@ -738,29 +1417,212 @@ class _LockedReasons extends StatelessWidget {
   }
 }
 
-class _EmptyFeedback extends StatelessWidget {
-  const _EmptyFeedback();
+class _SetRow extends StatelessWidget {
+  const _SetRow({
+    required this.number,
+    required this.draft,
+    required this.measure,
+    required this.unit,
+    required this.onComplete,
+    this.unilateral = false,
+  });
+
+  final int number;
+  final _SetDraft draft;
+  final SetMeasure measure;
+  final WeightUnit unit;
+  final VoidCallback onComplete;
+
+  /// Shows an "Operated" and an "Other" line for single-leg exercises.
+  final bool unilateral;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppConstants.cardPadding),
-        child: Row(
-          children: [
-            Icon(
-              Icons.feedback_outlined,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final scheme = Theme.of(context).colorScheme;
+    final done = draft.done;
+    InputDecoration decoration(String label, {String? hint}) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+      );
+    }
+
+    List<Widget> fields(
+      TextEditingController value,
+      TextEditingController weight,
+    ) {
+      return [
+        Expanded(
+          child: TextField(
+            controller: value,
+            enabled: !done,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: decoration(measure.fieldLabel),
+          ),
+        ),
+        if (measure.tracksWeight) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: weight,
+              enabled: !done,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              textInputAction: TextInputAction.done,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
+              ],
+              decoration: decoration(unit.label, hint: 'Bodyweight'),
+              onSubmitted: unilateral ? null : (_) => onComplete(),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
+          ),
+        ],
+      ];
+    }
+
+    Widget legRow(
+      String label,
+      TextEditingController value,
+      TextEditingController weight,
+    ) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 68,
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...fields(value, weight),
+        ],
+      );
+    }
+
+    final symmetry = unilateral && done ? draft.symmetry(measure, unit) : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 52,
+                child: Text(
+                  'Set $number',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: done ? scheme.primary : null,
+                  ),
+                ),
+              ),
+              if (unilateral)
+                Expanded(
+                  child: Column(
+                    children: [
+                      legRow('Operated', draft.value, draft.weight),
+                      const SizedBox(height: 8),
+                      legRow('Other', draft.otherValue, draft.otherWeight),
+                    ],
+                  ),
+                )
+              else
+                ...fields(draft.value, draft.weight),
+              const SizedBox(width: 8),
+              done
+                  ? IconButton.filled(
+                      tooltip: 'Undo set $number',
+                      onPressed: onComplete,
+                      icon: const Icon(Icons.check),
+                    )
+                  : IconButton.outlined(
+                      tooltip: 'Complete set $number',
+                      onPressed: onComplete,
+                      icon: const Icon(Icons.check),
+                    ),
+            ],
+          ),
+          if (symmetry != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 52, top: 6),
               child: Text(
-                'Feedback will appear here after you complete exercises.',
+                '$symmetry% symmetry',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
-          ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+class _NoSession extends ConsumerWidget {
+  const _NoSession({required this.evaluation});
+
+  final PhaseEvaluation evaluation;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ResponsivePage(
+      maxWidth: 620,
+      children: [
+        Icon(
+          Icons.fact_check_outlined,
+          size: 44,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'No exercises unlocked yet',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Harder work unlocks as you meet the goals for ${evaluation.phase.shortLabel}.',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: 16),
+        if (evaluation.safetyFlags.isNotEmpty) ...[
+          InfoListCard(
+            title: 'Please contact your clinical team',
+            items: evaluation.safetyFlags,
+            icon: Icons.medical_information_outlined,
+            color: AppTheme.softRed,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (evaluation.blockers.isNotEmpty)
+          InfoListCard(
+            title: 'Criteria to review',
+            items: evaluation.blockers,
+            icon: Icons.info_outline,
+          ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => context.push(AppRoutes.reassess),
+            icon: const Icon(Icons.fact_check_outlined),
+            label: const Text('Update my assessment'),
+          ),
+        ),
+      ],
     );
   }
 }

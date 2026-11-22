@@ -35,13 +35,11 @@ PhaseEvaluation evaluateRehabPhase(
 
   if (assessment.instability || assessment.givingWay) {
     safetyFlags.add(
-      'Instability or giving way should be reviewed by your clinical team.',
+      'Your knee feels unstable or gives way. Tell your doctor or physio.',
     );
   }
   if (assessment.locking) {
-    safetyFlags.add(
-      'Locking can be a mechanical symptom and needs clinical review.',
-    );
+    safetyFlags.add('Your knee locks. Tell your doctor or physio.');
   }
 
   final latestPain = milestone?.pain ?? assessment.pain;
@@ -96,26 +94,22 @@ PhaseEvaluation evaluateRehabPhase(
   final normalWalking = latestWalking == WalkingQuality.normal;
   final noMechanicalSymptoms = !assessment.hasMechanicalSymptoms;
   if (latestPain >= 5) {
-    blockers.add(
-      'Pain is elevated, so protection and symptom control remain priorities.',
-    );
+    blockers.add('Pain is high, so we keep things gentle.');
   }
   if (latestSwelling.severity >= Swelling.moderate.severity) {
-    blockers.add(
-      'Moderate or severe swelling should calm before loading increases.',
-    );
+    blockers.add('Swelling needs to calm down first.');
   }
   if (!hasFullExtension) {
-    blockers.add('Full knee straightening is not yet restored.');
+    blockers.add('Your knee does not fully straighten yet.');
   }
   if (!hasFunctionalFlexion) {
-    blockers.add('Knee bending is not yet functional.');
+    blockers.add('Your knee does not bend enough yet.');
   }
   if (!fullWeightBearing) {
-    blockers.add('Full weight bearing has not been reached.');
+    blockers.add('You are not walking on your full weight yet.');
   }
   if (!latestWalking.isFunctional) {
-    blockers.add('Walking quality still suggests protection is needed.');
+    blockers.add('You still walk with a limp.');
   }
   final hasPhaseOneCriteria =
       hasFullExtension &&
@@ -165,14 +159,10 @@ PhaseEvaluation evaluateRehabPhase(
       progress: 0.12,
       goals: const [
         'Calm pain and swelling.',
-        'Restore full extension and comfortable flexion.',
-        'Build confidence with safe walking.',
+        'Get the knee fully straight and bending well.',
+        'Walk safely and with confidence.',
       ],
-      blockers: [
-        ...blockers,
-        if (!hasFullExtension)
-          'Protocol criteria require full knee extension before progressing.',
-      ],
+      blockers: [...blockers],
       safetyFlags: safetyFlags,
     );
   }
@@ -188,27 +178,26 @@ PhaseEvaluation evaluateRehabPhase(
       phase: RehabPhase.earlyStrengthening,
       progress: 0.34,
       goals: const [
-        'Build controlled closed-chain strength.',
-        'Keep swelling quiet after sessions.',
-        'Improve gait quality and daily tolerance.',
+        'Build basic leg strength.',
+        'Keep swelling low after workouts.',
+        'Walk normally and handle daily tasks.',
       ],
       blockers: [
-        if (!quietKnee) 'Pain or swelling is still limiting progression.',
-        if (!fullRom) 'Full functional range of motion is not yet confirmed.',
+        if (!quietKnee) 'Pain or swelling is still holding you back.',
+        if (!fullRom) 'Full knee movement is not confirmed yet.',
         if (!fullWeightBearing)
-          'Full weight bearing is required before harder loading.',
+          'Walk on your full weight before harder exercises.',
         if (readinessKnown && !painFreeLoading)
-          'Protocol criteria require no pain or swelling increase after exercise.',
+          'Exercise should not increase pain or swelling.',
         if (readinessKnown &&
             assessment.weeksPostOp < 8 &&
             !protocol.strongQuadSet)
-          'A strong quad set with visible patellar glide is not confirmed.',
+          'A strong thigh squeeze is not confirmed yet.',
         if (readinessKnown &&
             assessment.weeksPostOp < 8 &&
             !protocol.straightLegRaiseNoLag)
-          'Straight leg raise without lag is not confirmed.',
-        if (!latestWalking.isFunctional)
-          'Walking should be comfortable and controlled.',
+          'A straight leg raise without the knee bending is not confirmed yet.',
+        if (!latestWalking.isFunctional) 'Walking should feel comfortable.',
       ],
       safetyFlags: const [],
     );
@@ -222,25 +211,22 @@ PhaseEvaluation evaluateRehabPhase(
       phase: RehabPhase.advancedStrength,
       progress: 0.56,
       goals: const [
-        'Develop single-leg strength and control.',
-        'Introduce balance and proprioception criteria.',
-        'Prepare for running readiness when cleared.',
+        'Build strength on one leg.',
+        'Improve your balance.',
+        'Get ready for running.',
       ],
       blockers: [
-        if (!normalWalking)
-          'Normal walking is needed before higher-demand drills.',
-        if (highDemandRestriction)
-          'Current restrictions limit advanced strengthening choices.',
-        if (assessment.weeksPostOp < 12)
-          'Early tissue healing still limits advanced work.',
+        if (!normalWalking) 'Walk normally before harder exercises.',
+        if (highDemandRestriction) 'Your restrictions limit harder exercises.',
+        if (assessment.weeksPostOp < 12) 'Your graft is still healing.',
         if (readinessKnown && !controlledSingleLegSquat)
-          '10 controlled single-leg squats to about 60 degrees are not confirmed.',
+          '10 controlled one-leg squats are not confirmed yet.',
         if (readinessKnown && !goodLandingControl)
-          'Landing control on a drop-jump style task is not confirmed.',
+          'Good landing control is not confirmed yet.',
         if (readinessKnown && !painFreeLoading)
-          'Loading activities should be pain-free before neuromuscular progression.',
+          'Exercises should be pain-free first.',
         if (readinessKnown && !hasAdvancedStrength)
-          'Quad, hamstring, and hip/balance symmetry should reach at least 80%.',
+          'Your operated leg should reach 80% of the other leg.',
       ],
       safetyFlags: const [],
     );
@@ -254,22 +240,22 @@ PhaseEvaluation evaluateRehabPhase(
       phase: RehabPhase.neuromuscularControl,
       progress: 0.72,
       goals: const [
-        'Refine balance, landing mechanics, and deceleration.',
-        'Build readiness for running and change of direction.',
-        'Track strength, hop, and balance symmetry.',
+        'Improve balance, landing, and stopping.',
+        'Get ready for running and turning.',
+        'Compare both legs in strength, hops, and balance.',
       ],
       blockers: [
-        if (runningRestriction) 'Running is still listed as restricted.',
+        if (runningRestriction) 'Running is still restricted.',
         if (assessment.weeksPostOp < 20)
-          'Later-stage drills still need time plus criteria.',
+          'These drills need more time and progress.',
         if (readinessKnown && !ptClearedForRunning)
-          'PT clearance for running is not recorded.',
+          'Your physio has not cleared you to run yet.',
         if (readinessKnown && !painFreeRepeatedHops)
-          'Pain-free repeated single-leg hopping is not confirmed.',
+          'Pain-free hopping on one leg is not confirmed yet.',
         if (readinessKnown && latestQuadSymmetry < 80)
-          'Quad strength symmetry should be at least 80% before running progression.',
+          'Thigh strength should reach 80% of the other leg before running.',
         if (milestone?.canRun == false)
-          'Running tolerance has not been confirmed.',
+          'Running without pain is not confirmed yet.',
       ],
       safetyFlags: const [],
     );
@@ -286,9 +272,9 @@ PhaseEvaluation evaluateRehabPhase(
       phase: RehabPhase.returnToSport,
       progress: 0.92,
       goals: const [
-        'Progress sport-specific change of direction.',
-        'Maintain strength and hop symmetry above 90%.',
-        'Use PT clearance for high-risk drills and return decisions.',
+        'Practise turning and cutting for your sport.',
+        'Keep both legs within 90% of each other.',
+        'Get your physio to clear you for risky drills and sport.',
       ],
       blockers: const [],
       safetyFlags: const [],
@@ -299,18 +285,17 @@ PhaseEvaluation evaluateRehabPhase(
     phase: RehabPhase.neuromuscularControl,
     progress: 0.78,
     goals: const [
-      'Close remaining strength and hop symmetry gaps.',
-      'Keep symptoms quiet after higher-demand sessions.',
-      'Confirm PT clearance before unrestricted sport work.',
+      'Close the last strength gaps between your legs.',
+      'Keep pain and swelling low after hard workouts.',
+      'Get your physio to clear you for full sport.',
     ],
     blockers: [
-      if (assessment.weeksPostOp < 24)
-        'Return-to-sport work usually needs at least 24 weeks plus criteria.',
+      if (assessment.weeksPostOp < 24) 'Sport usually needs at least 24 weeks.',
       if (!hasReturnMetrics)
-        'Return metrics should reach 90% symmetry, KOOS-Sports 90+, IKDC 93+, ACL-RSI 90+, and clinician clearance.',
+        'You need 90% leg symmetry, good knee scores, and clearance from your physio.',
       if (readinessKnown && !completedJogRunProgram)
-        'A jog/run progression without pain or swelling is not confirmed.',
-      if (!quietKnee) 'Pain and swelling should be quiet.',
+        'A pain-free running program is not confirmed yet.',
+      if (!quietKnee) 'Pain and swelling should be low.',
     ],
     safetyFlags: const [],
   );

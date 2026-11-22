@@ -1,5 +1,6 @@
 import 'package:acl_rehab/domain/models/assessment.dart';
 import 'package:acl_rehab/domain/models/milestone_check_in.dart';
+import 'package:acl_rehab/domain/models/training_profile.dart';
 
 enum ExerciseCategory {
   mobility,
@@ -11,6 +12,45 @@ enum ExerciseCategory {
 }
 
 enum DifficultyLevel { foundation, moderate, advanced, sport }
+
+/// The training goal an exercise serves. Alternatives must share a purpose so
+/// a swap keeps the same intent (for example, extension range of motion is
+/// never replaced by a flexion drill).
+enum TrainingPurpose {
+  kneeExtension,
+  kneeFlexion,
+  quadActivation,
+  circulation,
+  quadStrength,
+  singleLegStrength,
+  hipStability,
+  coreStability,
+  posteriorChain,
+  hamstringStrength,
+  calfStrength,
+  balance,
+  landing,
+  plyometric,
+  running,
+  changeOfDirection,
+  conditioning,
+}
+
+/// The quality a single-leg exercise measures when both legs are logged.
+enum SymmetryArea { quad, hamstring, hip, calf, balance }
+
+extension SymmetryAreaX on SymmetryArea {
+  String get label => switch (this) {
+    SymmetryArea.quad => 'Quad',
+    SymmetryArea.hamstring => 'Hamstring',
+    SymmetryArea.hip => 'Hip',
+    SymmetryArea.calf => 'Calf',
+    SymmetryArea.balance => 'Balance',
+  };
+
+  /// Whether a check-in records this area (calf symmetry is shown only).
+  bool get feedsCheckIn => this != SymmetryArea.calf;
+}
 
 enum SessionBlock {
   mobility,
@@ -55,6 +95,84 @@ extension DifficultyLevelX on DifficultyLevel {
         return 'Sport';
     }
   }
+}
+
+extension TrainingPurposeX on TrainingPurpose {
+  String get label {
+    switch (this) {
+      case TrainingPurpose.kneeExtension:
+        return 'Knee extension range';
+      case TrainingPurpose.kneeFlexion:
+        return 'Knee flexion range';
+      case TrainingPurpose.quadActivation:
+        return 'Quadriceps activation';
+      case TrainingPurpose.circulation:
+        return 'Swelling & circulation';
+      case TrainingPurpose.quadStrength:
+        return 'Quadriceps strength';
+      case TrainingPurpose.singleLegStrength:
+        return 'Single-leg strength';
+      case TrainingPurpose.hipStability:
+        return 'Hip stability';
+      case TrainingPurpose.coreStability:
+        return 'Core stability';
+      case TrainingPurpose.posteriorChain:
+        return 'Glutes & posterior chain';
+      case TrainingPurpose.hamstringStrength:
+        return 'Hamstring strength';
+      case TrainingPurpose.calfStrength:
+        return 'Calf & gait support';
+      case TrainingPurpose.balance:
+        return 'Balance & proprioception';
+      case TrainingPurpose.landing:
+        return 'Landing mechanics';
+      case TrainingPurpose.plyometric:
+        return 'Hopping & power';
+      case TrainingPurpose.running:
+        return 'Running tolerance';
+      case TrainingPurpose.changeOfDirection:
+        return 'Change of direction';
+      case TrainingPurpose.conditioning:
+        return 'Conditioning & warm-up';
+    }
+  }
+
+  /// Purposes that train closely related qualities. Used as a fallback when
+  /// no same-purpose alternative is available.
+  Set<TrainingPurpose> get related {
+    switch (this) {
+      case TrainingPurpose.quadStrength:
+        return const {TrainingPurpose.singleLegStrength};
+      case TrainingPurpose.singleLegStrength:
+        return const {TrainingPurpose.quadStrength};
+      case TrainingPurpose.posteriorChain:
+        return const {TrainingPurpose.hamstringStrength};
+      case TrainingPurpose.hamstringStrength:
+        return const {TrainingPurpose.posteriorChain};
+      case TrainingPurpose.landing:
+        return const {TrainingPurpose.plyometric};
+      case TrainingPurpose.plyometric:
+        return const {TrainingPurpose.landing};
+      case TrainingPurpose.quadActivation:
+        return const {TrainingPurpose.quadStrength};
+      default:
+        return const {};
+    }
+  }
+
+  bool get isHighImpact =>
+      this == TrainingPurpose.landing ||
+      this == TrainingPurpose.plyometric ||
+      this == TrainingPurpose.running ||
+      this == TrainingPurpose.changeOfDirection;
+
+  /// Motion, activation, and circulation work is dosed daily and is not
+  /// reduced when symptoms are elevated.
+  bool get isMotionOrActivation =>
+      this == TrainingPurpose.kneeExtension ||
+      this == TrainingPurpose.kneeFlexion ||
+      this == TrainingPurpose.quadActivation ||
+      this == TrainingPurpose.circulation;
 }
 
 extension SessionBlockX on SessionBlock {
@@ -169,24 +287,20 @@ class ExerciseCriteria {
         milestone?.physicianClearanceForSport ?? protocol.mdClearedForSport;
 
     if (assessment.weeksPostOp < minimumWeeks) {
-      reasons.add(
-        'At least week $minimumWeeks is usually needed before this drill is considered.',
-      );
+      reasons.add('Unlocks around week $minimumWeeks.');
     }
     if (assessment.graftType == GraftType.hamstring &&
         minimumWeeksForHamstringGraft != null &&
         assessment.weeksPostOp < minimumWeeksForHamstringGraft!) {
       reasons.add(
-        'Hamstring graft precautions keep this loading below week '
-        '$minimumWeeksForHamstringGraft.',
+        'With a hamstring graft, this waits until week $minimumWeeksForHamstringGraft.',
       );
     }
     if (assessment.graftType == GraftType.allograft &&
         minimumWeeksForAllograft != null &&
         assessment.weeksPostOp < minimumWeeksForAllograft!) {
       reasons.add(
-        'Allograft precautions keep this drill below week '
-        '$minimumWeeksForAllograft.',
+        'With a donor graft, this waits until week $minimumWeeksForAllograft.',
       );
     }
     if (currentPain > maximumPain) {
@@ -194,18 +308,18 @@ class ExerciseCriteria {
     }
     if (currentSwelling.severity > allowedSwelling.severity) {
       reasons.add(
-        'Swelling should be ${allowedSwelling.label.toLowerCase()} or better.',
+        'Swelling should be ${allowedSwelling.label.toLowerCase()} or less.',
       );
     }
     if (requiresFullExtension &&
         !assessment.canStraighten &&
         milestone?.hasFullExtension != true) {
-      reasons.add('Full knee straightening is required.');
+      reasons.add('Your knee needs to straighten fully.');
     }
     if (requiresFunctionalFlexion &&
         !assessment.canBend &&
         milestone?.hasFunctionalFlexion != true) {
-      reasons.add('Functional knee bending is required.');
+      reasons.add('Your knee needs to bend enough.');
     }
     if (requiresFullWeightBearing &&
         (milestone?.weightBearing ?? assessment.weightBearing) !=
@@ -215,67 +329,61 @@ class ExerciseCriteria {
     if (requiresNormalWalking) {
       final walking = milestone?.walkingQuality ?? assessment.walkingQuality;
       if (walking != WalkingQuality.normal) {
-        reasons.add('Walking should be normal without a limp.');
+        reasons.add('You need to walk without a limp.');
       }
     }
     if (requiresNoMechanicalSymptoms && assessment.hasMechanicalSymptoms) {
-      reasons.add(
-        'Instability, locking, or giving way needs clinical review first.',
-      );
+      reasons.add('Tell your physio about the instability or locking first.');
     }
     if (minimumQuadSymmetry > 0 && quadSymmetry < minimumQuadSymmetry) {
       reasons.add(
-        'Quad strength symmetry should be at least $minimumQuadSymmetry%.',
+        'Thigh strength should be $minimumQuadSymmetry% of the other leg.',
       );
     }
     if (minimumHamstringSymmetry > 0 &&
         hamstringSymmetry < minimumHamstringSymmetry) {
       reasons.add(
-        'Hamstring strength symmetry should be at least $minimumHamstringSymmetry%.',
+        'Hamstring strength should be $minimumHamstringSymmetry% of the other leg.',
       );
     }
     if (minimumHipSymmetry > 0 && hipSymmetry < minimumHipSymmetry) {
       reasons.add(
-        'Hip/glute strength symmetry should be at least $minimumHipSymmetry%.',
+        'Hip strength should be $minimumHipSymmetry% of the other leg.',
       );
     }
     if (minimumHopSymmetry > 0 && hopSymmetry < minimumHopSymmetry) {
-      reasons.add('Hop test symmetry should be at least $minimumHopSymmetry%.');
+      reasons.add('Hops should be $minimumHopSymmetry% of the other leg.');
     }
     if (minimumBalanceSymmetry > 0 &&
         balanceSymmetry < minimumBalanceSymmetry) {
       reasons.add(
-        'Balance symmetry should be at least $minimumBalanceSymmetry%.',
+        'Balance should be $minimumBalanceSymmetry% of the other leg.',
       );
     }
     if (requiresPainFreeLoadingActivities && !painFreeLoading) {
-      reasons.add('Loading activities should be pain-free.');
+      reasons.add('Exercises should be pain-free.');
     }
     if (requiresPainFreeRepeatedSingleLegHops && !painFreeRepeatedHops) {
-      reasons.add('Repeated single-leg hops should be pain-free.');
+      reasons.add('Hopping on one leg should be pain-free.');
     }
     if (requiresGoodLandingControl && !goodLandingControl) {
-      reasons.add('Landing mechanics should be controlled and symmetrical.');
+      reasons.add('You need good landing control.');
     }
     if (requiresCompletedJogRunProgram && !completedJogRunProgram) {
-      reasons.add(
-        'A walk/jog or running progression should be completed without symptoms.',
-      );
+      reasons.add('Finish a walk/jog program without pain first.');
     }
     if (requiresRunningTolerance && !canRun) {
-      reasons.add('Running tolerance should be confirmed first.');
+      reasons.add('You need to run without pain first.');
     }
     if (requiresPtClearance && !hasPtClearance) {
-      reasons.add('PT clearance is required before this exercise unlocks.');
+      reasons.add('Your physio needs to clear you first.');
     }
     if (requiresPhysicianClearance && !hasPhysicianClearance) {
-      reasons.add(
-        'Physician clearance is required before this return-to-sport drill unlocks.',
-      );
+      reasons.add('Your doctor needs to clear you for sport first.');
     }
     for (final restriction in blockingRestrictions) {
       if (assessment.hasRestriction(restriction)) {
-        reasons.add('$restriction is currently listed as a restriction.');
+        reasons.add('Blocked by your restriction: $restriction.');
       }
     }
 
@@ -312,7 +420,10 @@ class Exercise {
     required this.sessionBlock,
     required this.medicalNotes,
     required this.safetyWarnings,
+    required this.purpose,
+    this.requiredEquipment = const {},
     this.alternativeExerciseIds = const [],
+    this.symmetryArea,
   });
 
   final String id;
@@ -336,6 +447,27 @@ class Exercise {
   final String medicalNotes;
   final List<String> safetyWarnings;
   final List<String> alternativeExerciseIds;
+
+  /// The main training goal of this exercise.
+  final TrainingPurpose purpose;
+
+  /// Equipment needed beyond household basics.
+  final Set<EquipmentType> requiredEquipment;
+
+  /// Set for single-leg exercises that log the operated and other leg.
+  final SymmetryArea? symmetryArea;
+
+  bool get isUnilateral => symmetryArea != null;
+
+  bool get isHighImpact => purpose.isHighImpact;
+
+  bool get needsNoEquipment => requiredEquipment.isEmpty;
+
+  bool isAvailableWith(TrainingProfile profile) =>
+      profile.hasAll(requiredEquipment);
+
+  List<EquipmentType> missingEquipment(TrainingProfile profile) =>
+      requiredEquipment.where((item) => !profile.has(item)).toList();
 
   ExerciseUnlockStatus unlockStatus(
     Assessment assessment,

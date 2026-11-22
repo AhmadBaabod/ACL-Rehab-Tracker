@@ -2,9 +2,11 @@ import 'package:acl_rehab/core/constants/app_constants.dart';
 import 'package:acl_rehab/core/navigation/app_router.dart';
 import 'package:acl_rehab/core/theme/app_theme.dart';
 import 'package:acl_rehab/domain/models/assessment.dart';
+import 'package:acl_rehab/domain/models/workout_log.dart';
 import 'package:acl_rehab/presentation/providers/app_state_provider.dart';
 import 'package:acl_rehab/presentation/widgets/clinical_disclaimer_banner.dart';
 import 'package:acl_rehab/presentation/widgets/section_header.dart';
+import 'package:acl_rehab/presentation/widgets/training_setup_form.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +43,7 @@ class AboutScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ACL Recovery Coach is a criteria-based recovery companion for people after ACL reconstruction.',
+                        'ACL Recovery Coach guides your recovery after ACL surgery.',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -92,6 +94,60 @@ class AboutScreen extends ConsumerWidget {
                                 },
                               ),
                               const SizedBox(height: 18),
+                              Text(
+                                'Weight unit',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 10),
+                              SegmentedButton<WeightUnit>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: WeightUnit.kg,
+                                    label: Text('Kilograms (kg)'),
+                                  ),
+                                  ButtonSegment(
+                                    value: WeightUnit.lb,
+                                    label: Text('Pounds (lb)'),
+                                  ),
+                                ],
+                                selected: {appState.weightUnit},
+                                onSelectionChanged: (selection) async {
+                                  HapticFeedback.selectionClick();
+                                  await ref
+                                      .read(appControllerProvider.notifier)
+                                      .updateWeightUnit(selection.first);
+                                },
+                              ),
+                              const SizedBox(height: 18),
+                              const Divider(height: 1),
+                              const SizedBox(height: 18),
+                              Text(
+                                'Training setup',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Change your goal, days, time, or equipment. Your plan updates to match.',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      showTrainingSetupSheet(context, ref),
+                                  icon: const Icon(Icons.tune),
+                                  label: const Text('Edit training setup'),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
                               const Divider(height: 1),
                               const SizedBox(height: 18),
                               Text(
@@ -101,7 +157,7 @@ class AboutScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Retake the initial assessment if your symptoms, restrictions, graft details, or surgery timeline need to be corrected.',
+                                'To log progress, use Reassess on the Progress tab. Only redo this if you entered something wrong.',
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: Theme.of(
@@ -117,7 +173,7 @@ class AboutScreen extends ConsumerWidget {
                                       _confirmRetakeAssessment(context, ref),
                                   icon: const Icon(Icons.restart_alt),
                                   label: const Text(
-                                    'Retake Initial Assessment',
+                                    'Correct Initial Assessment',
                                   ),
                                 ),
                               ),
@@ -129,53 +185,59 @@ class AboutScreen extends ConsumerWidget {
                       _section(
                         context,
                         icon: Icons.volunteer_activism_outlined,
-                        title: 'Clinical Philosophy',
+                        title: 'How it works',
                         body:
-                            'The program favors symptom response, movement quality, range of motion, strength symmetry, balance, hop testing, restrictions, graft considerations, and PT clearance over calendar time alone.',
+                            'You move forward based on how your knee is doing, not just the date.',
                       ),
                       _section(
                         context,
                         icon: Icons.science_outlined,
-                        title: 'Evidence-Based Rehabilitation',
+                        title: 'Your exercises',
                         body:
-                            'Exercise choices are structured around controlled loading, progressive strength, neuromuscular control, and late-stage return-to-sport criteria. The app records feedback so future sessions can recommend regression, maintenance, or progression.',
+                            'Rate each exercise. Two "Just right" with low pain makes it harder. "Too hard" or pain 5/10 makes it easier.',
                       ),
                       _section(
                         context,
                         icon: Icons.rule_outlined,
-                        title: 'Criteria-Based Progression',
-                        body:
-                            'Advanced drills remain locked until pain, swelling, ROM, gait, strength symmetry, balance symmetry, hop symmetry, running tolerance, restrictions, and PT clearance meet the criteria for that drill.',
+                        title: 'Locked exercises',
+                        body: 'Harder drills unlock when your knee is ready.',
                       ),
                       _section(
                         context,
                         icon: Icons.medical_information_outlined,
                         title: 'Medical Disclaimer',
                         body:
-                            'This app is educational and supportive. It does not diagnose, prescribe treatment, replace clinical care, or override surgeon or physical therapist instructions.',
+                            'This app is a guide only. Your surgeon and physio always come first.',
                         accent: AppTheme.softRed,
                       ),
                       _graftSection(context),
                       _section(
                         context,
                         icon: Icons.menu_book_outlined,
-                        title: 'Educational Information',
+                        title: 'Learn as you go',
                         body:
-                            'Patients can review why certain drills are locked, what criteria matter, and how symptoms after exercise should guide the next session.',
+                            'See why drills are locked and what you need to unlock them.',
                       ),
                       _section(
                         context,
                         icon: Icons.source_outlined,
-                        title: 'Protocol Sources',
+                        title: 'Sources',
                         body:
-                            'Criteria and exercise gates are modeled from Mass General Brigham ACL reconstruction rehab guidance, Ohio State Sports Medicine ACL criteria, Aspetar ACLR return-to-running/return-to-sport guidance, and University of Delaware criteria-based ACL practice guidelines.',
+                            'Based on ACL guidelines from Mass General Brigham, Ohio State, Aspetar, MOON, and the University of Delaware.',
                       ),
                       _section(
                         context,
-                        icon: Icons.auto_stories_outlined,
-                        title: 'Future References Placeholder',
+                        icon: Icons.autorenew,
+                        title: 'Your plan changes with you',
                         body:
-                            'The architecture is ready for authentication, cloud sync, wearable integration, AI recommendations, PT portals, push notifications, telehealth, analytics, PDF reports, and multi-language support.',
+                            'Assessment, plan, workouts, retest, new plan. When you improve, the app asks you to retest and updates your plan.',
+                      ),
+                      _section(
+                        context,
+                        icon: Icons.lock_outline,
+                        title: 'Your Data',
+                        body:
+                            'Everything stays on this device. Nothing is uploaded.',
                       ),
                     ],
                   ),
@@ -201,9 +263,9 @@ class AboutScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.restart_alt),
-        title: const Text('Retake initial assessment?'),
+        title: const Text('Correct initial assessment?'),
         content: const Text(
-          'You will go through onboarding again. Your session logs, milestone check-ins, and exercise history will be kept.',
+          'You will answer every question again. Your workouts are kept. To log progress, use Reassess instead.',
         ),
         actions: [
           TextButton(
@@ -212,7 +274,7 @@ class AboutScreen extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Retake'),
+            child: const Text('Continue'),
           ),
         ],
       ),
@@ -223,10 +285,7 @@ class AboutScreen extends ConsumerWidget {
     }
 
     HapticFeedback.mediumImpact();
-    await ref.read(appControllerProvider.notifier).retakeInitialAssessment();
-    if (context.mounted) {
-      context.go(AppRoutes.onboarding);
-    }
+    context.push(AppRoutes.retake);
   }
 
   Widget _graftSection(BuildContext context) {

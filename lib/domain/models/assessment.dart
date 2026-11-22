@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:acl_rehab/domain/models/training_profile.dart';
+
 enum GraftType { patellarTendon, hamstring, quadriceps, allograft }
 
 enum Swelling { none, mild, moderate, severe }
@@ -198,6 +200,8 @@ class Assessment {
     required this.restrictions,
     required this.notes,
     this.protocolReadiness = const ProtocolReadiness(),
+    this.confidence = 5,
+    this.profile = const TrainingProfile(),
   });
 
   final DateTime surgeryDate;
@@ -214,6 +218,12 @@ class Assessment {
   final List<String> restrictions;
   final String notes;
   final ProtocolReadiness protocolReadiness;
+
+  /// Self-rated confidence in the knee, 0 (none) to 10 (full).
+  final int confidence;
+
+  /// Goals, schedule, and equipment used to personalize the plan.
+  final TrainingProfile profile;
 
   int get weeksPostOp {
     final now = DateTime.now();
@@ -253,6 +263,8 @@ class Assessment {
     List<String>? restrictions,
     String? notes,
     ProtocolReadiness? protocolReadiness,
+    int? confidence,
+    TrainingProfile? profile,
   }) {
     return Assessment(
       surgeryDate: surgeryDate ?? this.surgeryDate,
@@ -269,6 +281,8 @@ class Assessment {
       restrictions: restrictions ?? this.restrictions,
       notes: notes ?? this.notes,
       protocolReadiness: protocolReadiness ?? this.protocolReadiness,
+      confidence: confidence ?? this.confidence,
+      profile: profile ?? this.profile,
     );
   }
 
@@ -288,6 +302,8 @@ class Assessment {
       'restrictions': restrictions,
       'notes': notes,
       'protocolReadiness': protocolReadiness.toJson(),
+      'confidence': confidence,
+      'profile': profile.toJson(),
     };
   }
 
@@ -327,6 +343,12 @@ class Assessment {
           data['protocolReadiness'] as Map<dynamic, dynamic>? ?? const {},
         ),
       ),
+      confidence: data['confidence'] as int? ?? 5,
+      profile: data['profile'] == null
+          ? TrainingProfile.legacyDefault()
+          : TrainingProfile.fromJson(
+              Map<String, dynamic>.from(data['profile'] as Map),
+            ),
     );
   }
 
