@@ -87,7 +87,9 @@ class ExerciseCatalog {
       category: ExerciseCategory.strength,
       sessionBlock: SessionBlock.bilateralStrength,
       medicalNotes:
-          'Activation quality matters more than intensity in this stage.',
+          'Activation quality matters more than intensity in this stage. '
+          'The 2023 Aspetar guideline supports adding electrical muscle '
+          'stimulation (NMES) here if your physio offers it.',
       safety: ['Avoid forcing the knee into painful terminal extension.'],
       purpose: TrainingPurpose.quadActivation,
       alternatives: ['straight-leg-raise'],
@@ -183,7 +185,38 @@ class ExerciseCatalog {
           'A useful option when a heel prop is uncomfortable or extension is slow to return.',
       safety: ['Stop for sharp pain behind the knee or tingling in the foot.'],
       purpose: TrainingPurpose.kneeExtension,
-      alternatives: ['heel-prop-extension'],
+      alternatives: ['heel-prop-extension', 'patellar-mobilization'],
+    ),
+    _exercise(
+      id: 'patellar-mobilization',
+      name: 'Patellar Mobilization',
+      description:
+          'Gentle kneecap glides to keep the patella mobile for full straightening.',
+      instructions: [
+        'Sit with the leg straight and the thigh fully relaxed.',
+        'Use thumb and fingers to glide the kneecap up, down, and side to side.',
+        'Move slowly to a gentle stretch and hold each direction briefly.',
+      ],
+      targets: ['Patellar mobility', 'Knee extension'],
+      equipment: ['None'],
+      sets: 2,
+      reps: '10 each direction',
+      holdTime: '5 sec',
+      regression: 'Use smaller glides and fewer directions.',
+      progression:
+          'Hold each glide longer if the kneecap still feels stiff compared with the other side.',
+      difficulty: DifficultyLevel.foundation,
+      criteria: const ExerciseCriteria(maximumPain: 6),
+      phase: RehabPhase.protectionAndMotion,
+      category: ExerciseCategory.mobility,
+      sessionBlock: SessionBlock.mobility,
+      medicalNotes:
+          'Part of the early phase in widely used protocols such as MOON. A stiff kneecap limits full extension and quadriceps activation.',
+      safety: [
+        'Keep pressure away from fresh incisions and stop for sharp pain.',
+      ],
+      purpose: TrainingPurpose.kneeExtension,
+      alternatives: ['heel-prop-extension', 'prone-hang'],
     ),
     _exercise(
       id: 'seated-knee-flexion',
@@ -466,7 +499,7 @@ class ExerciseCatalog {
       category: ExerciseCategory.strength,
       sessionBlock: SessionBlock.bilateralStrength,
       medicalNotes:
-          'Open-chain knee extension rebuilds quadriceps strength that squats alone often miss. Keep to 90-45 degrees until full range is cleared, usually around week 12.',
+          'Open-chain knee extension rebuilds quadriceps strength that squats alone often miss. Keep to 90-45 degrees until full range is cleared, usually around week 12. Current guidelines (Aspetar 2023) recommend combining open- and closed-chain work, with slow lowering phases.',
       safety: ['Stop for pain at the front of the knee or around the kneecap.'],
       purpose: TrainingPurpose.quadStrength,
       equipmentNeeded: {EquipmentType.gymMachines},
@@ -749,7 +782,45 @@ class ExerciseCatalog {
         'Keep knees behind the toes and stop for sharp front-of-knee pain.',
       ],
       purpose: TrainingPurpose.quadStrength,
-      alternatives: ['box-squat', 'leg-press-0-60'],
+      alternatives: ['box-squat', 'leg-press-0-60', 'spanish-squat'],
+    ),
+    _exercise(
+      id: 'spanish-squat',
+      name: 'Spanish Squat',
+      description:
+          'Isometric quadriceps hold with a band behind the knees, which keeps the shins upright.',
+      instructions: [
+        'Loop a heavy band around a sturdy post and step into it so it sits behind both knees.',
+        'Walk back until the band is tight, then sit the hips back with shins vertical.',
+        'Lower to a comfortable bend (about 45-60 degrees) and hold with even weight.',
+      ],
+      targets: ['Quadriceps'],
+      equipment: ['Heavy resistance band', 'Sturdy anchor'],
+      sets: 4,
+      reps: '1 hold',
+      holdTime: '30-45 sec',
+      regression: 'Use a shallower bend or a shorter hold.',
+      progression:
+          'Lengthen the hold, then sit slightly deeper as the knee stays quiet.',
+      difficulty: DifficultyLevel.moderate,
+      criteria: const ExerciseCriteria(
+        minimumWeeks: 6,
+        maximumPain: 3,
+        allowedSwelling: Swelling.mild,
+        requiresFullExtension: true,
+        requiresFullWeightBearing: true,
+      ),
+      phase: RehabPhase.earlyStrengthening,
+      category: ExerciseCategory.strength,
+      sessionBlock: SessionBlock.bilateralStrength,
+      medicalNotes:
+          'A popular way to load the quadriceps heavily while keeping knee pain low. Isometric holds often reduce pain around the kneecap.',
+      safety: [
+        'Anchor the band securely and stop for sharp front-of-knee pain.',
+      ],
+      purpose: TrainingPurpose.quadStrength,
+      equipmentNeeded: {EquipmentType.resistanceBand},
+      alternatives: ['wall-sit', 'box-squat'],
     ),
     _exercise(
       id: 'seated-knee-extension-90-45',
@@ -2170,7 +2241,7 @@ class ExerciseCatalog {
       category: ExerciseCategory.strength,
       sessionBlock: SessionBlock.posteriorChain,
       medicalNotes:
-          'Eccentric hamstring strength is linked to lower reinjury risk in sport.',
+          'Eccentric hamstring strength is linked to lower reinjury risk in sport. The Nordic curl is a core part of injury-prevention warm-ups such as FIFA 11+.',
       safety: [
         'Expect soreness for a day or two; stop for sharp pain at the graft site.',
       ],
